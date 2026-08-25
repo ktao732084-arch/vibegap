@@ -19,6 +19,7 @@ class SessionKey:
 class SessionInfo:
     is_running: bool
     last_event_at: datetime
+    cwd: str = ""
 
 
 @dataclass(frozen=True)
@@ -43,7 +44,11 @@ def reduce_event(
     (daemon 中途重启会丢失 RUNNING 记录,但用户仍需要提醒)。
     """
     key = SessionKey(event.agent, event.session_id)
-    info = SessionInfo(is_running=(event.kind is EventKind.RUNNING), last_event_at=event.ts)
+    existing = state.sessions.get(key)
+    cwd = event.cwd or (existing.cwd if existing else "")
+    info = SessionInfo(
+        is_running=(event.kind is EventKind.RUNNING), last_event_at=event.ts, cwd=cwd
+    )
     new_state = _with_session(state, key, info)
     if event.kind is EventKind.RUNNING:
         return new_state, []

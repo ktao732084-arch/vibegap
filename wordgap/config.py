@@ -55,6 +55,7 @@ class Settings:
     summary_linger_sec: int = SUMMARY_LINGER_SEC
     session_ttl_min: int = SESSION_TTL_MIN
     daemon_port: int = DAEMON_PORT
+    daily_goal: int = 50  # 每日目标词数
 
 
 def load_settings(path: Path = CONFIG_PATH) -> Settings:

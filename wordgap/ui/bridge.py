@@ -10,9 +10,10 @@ import sqlite3
 import threading
 from pathlib import Path
 
+from wordgap.config import Settings
 from wordgap.daemon.newsfeed import NewsFeed
 from wordgap.daemon.runtime import Runtime
-from wordgap.store import progress, wordbooks
+from wordgap.store import progress, stats, wordbooks
 from wordgap.store.db import connect
 from wordgap.store.wordbooks import WordbookError
 
@@ -22,13 +23,20 @@ logger = logging.getLogger(__name__)
 class Bridge:
     """暴露给前端的 API(方法名即 pywebview.api.<name>)。"""
 
-    def __init__(self, db_path: Path | str, runtime: Runtime, newsfeed: NewsFeed) -> None:
+    def __init__(
+        self,
+        db_path: Path | str,
+        runtime: Runtime,
+        newsfeed: NewsFeed,
+        settings: Settings | None = None,
+    ) -> None:
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._lock = threading.Lock()
         self._runtime = runtime
         self._newsfeed = newsfeed
+        self._settings = settings or Settings()
 
     def next_word(self) -> dict:
         """当前词书的下一个词 + 进度;无词书时返回 error 字段。"""
@@ -70,19 +78,97 @@ class Bridge:
         }
 
     def get_progress(self) -> dict:
-        """状态栏用的进度概览。"""
+        """状态栏用的进度概览(含每日目标)。"""
         with self._lock:
             book_id = wordbooks.get_current(self._conn)
             if book_id is None:
                 return {"error": "no_wordbook"}
             summary = progress.get_summary(self._conn, book_id)
             books = {b.id: b.name for b in wordbooks.list_wordbooks(self._conn)}
+            today = stats.today_stats(self._conn)
         return {
             "cursor": summary.cursor,
             "total": summary.total,
             "mode": summary.mode,
             "book_name": books.get(book_id, "?"),
+            "today": today.words_done,
+            "goal": self._settings.daily_goal,
         }
+
+    def peek_word(self, offset: int) -> dict:
+        """按相对当前游标的偏移取词(←→浏览),只读不动游标。"""
+        with self._lock:
+            book_id = wordbooks.get_current(self._conn)
+            if book_id is None:
+                return {"error": "no_wordbook"}
+            summary = progress.get_summary(self._conn, book_id)
+            position = summary.cursor + int(offset)
+            if position < 0 or position >= summary.total:
+                return {"error": "out_of_range"}
+            nw = progress.get_word_at(self._conn, book_id, position)
+        return {
+            "name": nw.word.name,
+            "trans": list(nw.word.trans),
+            "usphone": nw.word.usphone,
+            "position": nw.position,
+            "total": nw.total,
+            "offset": int(offset),
+        }
+
+    def list_books(self) -> list[dict]:
+        """词书列表(切换菜单用)。"""
+        with self._lock:
+            current = wordbooks.get_current(self._conn)
+            books = wordbooks.list_wordbooks(self._conn)
+        return [
+            {"id": b.id, "name": b.name, "count": b.word_count, "current": b.id == current}
+            for b in books
+        ]
+
+    def set_book(self, book_id: int) -> dict:
+        """切换当前词书。"""
+        with self._lock:
+            try:
+                wordbooks.set_current(self._conn, int(book_id))
+            except WordbookError as exc:
+                return {"error": str(exc)}
+        return {"ok": True}
+
+    def get_review(self) -> list[dict]:
+        """今日错词/跳过词队列(复习模式用)。"""
+        with self._lock:
+            book_id = wordbooks.get_current(self._conn)
+            if book_id is None:
+                return []
+            indices = stats.review_candidates(self._conn, book_id)
+            words = wordbooks.get_words(self._conn, book_id)
+        return [
+            {
+                "word_index": i,
+                "name": words[i].name,
+                "trans": list(words[i].trans),
+                "usphone": words[i].usphone,
+            }
+            for i in indices
+            if 0 <= i < len(words)
+        ]
+
+    def log_review(self, word_index: int, result: str, typo_count: int = 0) -> dict:
+        """记录一次复习结果(不动进度游标)。"""
+        with self._lock:
+            book_id = wordbooks.get_current(self._conn)
+            if book_id is None:
+                return {"error": "no_wordbook"}
+            words = wordbooks.get_words(self._conn, book_id)
+            idx = int(word_index)
+            if not 0 <= idx < len(words):
+                return {"error": "bad_index"}
+            if result not in ("pass", "fail", "skip"):
+                return {"error": "bad_result"}
+            stats.log_review(
+                self._conn, book_id, idx, words[idx].name, result, int(typo_count)
+            )
+        return {"ok": True}
 
     def get_news(self) -> list[dict]:
         """新闻轮播条数据;空列表 = 隐藏轮播条。"""
@@ -97,13 +183,49 @@ class Bridge:
         ]
 
     def get_state(self) -> dict:
-        """会话状态展示:哪些 agent 在跑(状态栏小圆点)。"""
+        """会话状态:活跃/已完成计数 + 明细(会话面板用)。"""
         snap = self._runtime.snapshot()
+        active = [s for s in snap.sessions if s.is_running]
+        done = [s for s in snap.sessions if not s.is_running]
+        to_dict = lambda s: {  # noqa: E731
+            "agent": s.agent,
+            "session_id": s.session_id,
+            "running": s.is_running,
+            "last_event_at": s.last_event_at,
+            "cwd": s.cwd,
+        }
         return {
             "phase": snap.phase,
             "any_running": snap.is_any_running,
             "running_agents": list(snap.running_agents),
+            "active_count": len(active),
+            "done_count": len(done),
+            "sessions": [to_dict(s) for s in snap.sessions],
         }
+
+    def request_focus(self) -> None:
+        """点击弹窗时把系统键盘焦点抢过来(窗口默认不抢焦点,点击表示用户要输入)。"""
+        import ctypes
+
+        from wordgap.config import WINDOW_TITLE
+
+        try:
+            user32 = ctypes.windll.user32
+            hwnd = user32.FindWindowW(None, WINDOW_TITLE)
+            if hwnd:
+                user32.SetForegroundWindow(hwnd)
+        except Exception as exc:  # noqa: BLE001 - 焦点失败退化为"再点一次"
+            logger.warning("request_focus failed: %s", exc)
+
+    def open_path(self, path: str) -> dict:
+        """打开某会话的项目目录(会话面板点击路径)。仅接受真实存在的目录。"""
+        import os
+
+        target = Path(str(path))
+        if not target.is_dir():
+            return {"error": "not_a_dir"}
+        os.startfile(str(target))  # noqa: S606 - 本机目录浏览,来源为本地 agent hook
+        return {"ok": True}
 
     def escape(self) -> None:
         """Esc 逃生:立即隐藏窗口。"""
@@ -115,7 +237,12 @@ class Bridge:
             self._conn.close()
 
 
-def open_bridge(db_path: Path | str, runtime: Runtime, newsfeed: NewsFeed) -> Bridge:
+def open_bridge(
+    db_path: Path | str,
+    runtime: Runtime,
+    newsfeed: NewsFeed,
+    settings: Settings | None = None,
+) -> Bridge:
     """建 Bridge 前确保 schema 就绪(bridge 自身的连接不做建表)。"""
     connect(db_path).close()
-    return Bridge(db_path, runtime, newsfeed)
+    return Bridge(db_path, runtime, newsfeed, settings)

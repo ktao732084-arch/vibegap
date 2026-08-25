@@ -28,6 +28,7 @@ class AgentEvent:
     session_id: str
     kind: EventKind
     ts: datetime | None
+    cwd: str = ""  # 会话工作目录(hook JSON 提供,会话面板展示用)
 
 
 @dataclass(frozen=True)

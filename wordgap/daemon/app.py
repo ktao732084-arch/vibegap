@@ -49,14 +49,18 @@ def create_app(runtime: Runtime) -> FastAPI:
         """
         _reject_browser(request)
         session_id = "unknown"
+        cwd = ""
         try:
             payload = json.loads((await request.body()) or b"{}")
-            if isinstance(payload, dict) and payload.get("session_id"):
-                session_id = str(payload["session_id"])
+            if isinstance(payload, dict):
+                if payload.get("session_id"):
+                    session_id = str(payload["session_id"])
+                if payload.get("cwd"):
+                    cwd = str(payload["cwd"])
         except json.JSONDecodeError:
             pass  # 钩子输入畸形不致命:退化为固定 session_id
         runtime.handle_event(
-            AgentEvent(agent=agent, session_id=session_id, kind=event, ts=None)
+            AgentEvent(agent=agent, session_id=session_id, kind=event, ts=None, cwd=cwd)
         )
         return {"ok": True}
 

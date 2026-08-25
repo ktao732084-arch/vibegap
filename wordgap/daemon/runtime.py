@@ -40,6 +40,17 @@ class Notifier(Protocol):
 
 
 @dataclass(frozen=True)
+class SessionView:
+    """会话面板展示用的单条会话视图。"""
+
+    agent: str
+    session_id: str
+    is_running: bool
+    last_event_at: str  # ISO 字符串
+    cwd: str
+
+
+@dataclass(frozen=True)
 class RuntimeSnapshot:
     """GET /state 与 UI 状态栏用的只读快照。"""
 
@@ -47,6 +58,7 @@ class RuntimeSnapshot:
     session_count: int
     is_any_running: bool
     running_agents: tuple[str, ...] = ()  # 有运行中会话的 agent 名,去重有序
+    sessions: tuple[SessionView, ...] = ()
 
 
 class Runtime:
@@ -121,14 +133,29 @@ class Runtime:
         """当前状态只读快照(调试端点与 UI 状态栏用)。"""
         with self._lock:
             running = []
-            for key, info in self._sessions.sessions.items():
+            views = []
+            for key, info in sorted(
+                self._sessions.sessions.items(),
+                key=lambda kv: kv[1].last_event_at,
+                reverse=True,
+            ):
                 if info.is_running and key.agent.value not in running:
                     running.append(key.agent.value)
+                views.append(
+                    SessionView(
+                        agent=key.agent.value,
+                        session_id=key.session_id,
+                        is_running=info.is_running,
+                        last_event_at=info.last_event_at.isoformat(timespec="seconds"),
+                        cwd=info.cwd,
+                    )
+                )
             return RuntimeSnapshot(
                 phase=self._sched.phase.name,
                 session_count=len(self._sessions.sessions),
                 is_any_running=sessions.any_running(self._sessions),
                 running_agents=tuple(running),
+                sessions=tuple(views),
             )
 
     def _sync_running_state(self) -> list[object]:

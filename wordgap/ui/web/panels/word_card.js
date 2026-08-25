@@ -1,41 +1,53 @@
-/* 主面板:qwerty 式打字背单词。region: main */
+/* 主面板:qwerty 式打字背单词 + ←→ 浏览 + 错词复习。region: main */
 (function () {
   "use strict";
 
   const root = document.getElementById("panel-main");
-  let word = null;      // {name, trans, usphone, position, total}
-  let typed = 0;        // 已敲对的字母数
-  let typos = 0;        // 本词敲错整词次数
-  let revealed = false; // Tab 显示了答案(记 fail)
+  let word = null;        // 当前显示的词
+  let typed = 0;
+  let typos = 0;
+  let revealed = false;
   let busy = false;
+  let browseOffset = 0;   // 0=正常打字;≠0=浏览模式(只读)
+  let review = null;      // null=正常;{queue:[], idx:0}=复习模式
+
+  function isBrowsing() { return browseOffset !== 0; }
+  function isReview() { return review !== null; }
 
   function render() {
     if (!word) return;
-    const chars = word.name
-      .split("")
-      .map((c, i) => {
-        const cls = i < typed ? "ch ok" : revealed ? "ch reveal" : "ch";
-        const shown = i < typed || revealed ? c : " ";
-        return '<span class="' + cls + '">' + shown + "</span>";
-      })
-      .join("");
+    const showAll = isBrowsing() || revealed;
+    const chars = word.name.split("").map((c, i) => {
+      const cls = i < typed ? "ch ok" : showAll ? "ch reveal" : "ch";
+      const shown = i < typed || showAll ? c : " ";
+      return '<span class="' + cls + '">' + shown + "</span>";
+    }).join("");
+    let hint;
+    if (isBrowsing()) {
+      hint = "浏览 " + (browseOffset > 0 ? "+" : "") + browseOffset +
+        " · ←→ 翻看 · 回车返回当前词";
+    } else if (isReview()) {
+      hint = "复习 " + (review.idx + 1) + "/" + review.queue.length +
+        " · Tab 看答案 · Esc 退出复习";
+    } else {
+      hint = "敲出单词 · ←→ 看前后词 · Tab 看答案 · Esc 隐藏";
+    }
     root.innerHTML =
       '<div class="wc-word" id="wc-word">' + chars + "</div>" +
       '<div class="wc-trans">' + word.trans.join(";") + "</div>" +
       '<div class="wc-phone" id="wc-phone" title="点击发音">' +
-      (word.usphone ? "/" + word.usphone + "/" : "") + ' <span class="wc-speaker">🔊</span></div>' +
-      '<div class="wc-hint">敲出单词 · Tab 看答案 · Esc 隐藏</div>';
+      (word.usphone ? "/" + word.usphone + "/" : "") +
+      ' <span class="wc-speaker">🔊</span></div>' +
+      '<div class="wc-hint">' + hint + "</div>";
     const phone = document.getElementById("wc-phone");
     if (phone) phone.addEventListener("click", pronounce);
   }
 
   function pronounce() {
     if (!word) return;
-    const url =
-      "https://dict.youdao.com/dictvoice?audio=" +
+    const url = "https://dict.youdao.com/dictvoice?audio=" +
       encodeURIComponent(word.name) + "&type=2";
-    const player = new Audio(url);
-    player.play().catch(() => {
+    new Audio(url).play().catch(() => {
       try {
         const u = new SpeechSynthesisUtterance(word.name);
         u.lang = "en-US";
@@ -45,20 +57,41 @@
     });
   }
 
+  function setWord(w) {
+    word = w; typed = 0; typos = 0; revealed = false;
+    render();
+    pronounce();
+  }
+
   function load() {
     const api = window.shell.api();
     if (!api) return;
     busy = true;
+    browseOffset = 0;
     api.next_word().then((w) => {
       busy = false;
       if (w.error) {
         root.innerHTML = '<div class="wc-trans">' +
           (w.error === "no_wordbook" ? "还没有词书,先导入一本" : w.error) + "</div>";
+        word = null;
         return;
       }
+      setWord(w);
+    });
+  }
+
+  function browse(delta) {
+    const api = window.shell.api();
+    if (!api || busy) return;
+    const target = browseOffset + delta;
+    if (target === 0) { load(); return; }
+    busy = true;
+    api.peek_word(target).then((w) => {
+      busy = false;
+      if (w.error) return; // 越界:停在边缘
+      browseOffset = target;
       word = w; typed = 0; typos = 0; revealed = false;
       render();
-      pronounce();
     });
   }
 
@@ -66,6 +99,23 @@
     const api = window.shell.api();
     if (!api || !word) return;
     busy = true;
+    if (isReview()) {
+      api.log_review(review.queue[review.idx].word_index, result, typos).then(() => {
+        busy = false;
+        review.idx += 1;
+        if (review.idx >= review.queue.length) {
+          const n = review.queue.length;
+          review = null;
+          root.innerHTML = '<div class="wc-summary"><div class="big">复习完成 ✓</div>' +
+            '<div class="sub">过了 ' + n + " 个错词</div></div>";
+          setTimeout(load, 1600);
+        } else {
+          setWord(review.queue[review.idx]);
+        }
+        window.shell.updateStatus();
+      });
+      return;
+    }
     api.commit_word(result, typos).then(() => {
       busy = false;
       window.shell.state.sessionWords += 1;
@@ -76,7 +126,14 @@
   }
 
   function onKey(e) {
-    if (!word || busy) return;
+    if (busy) return;
+    if (e.key === "ArrowLeft" && !isReview()) { e.preventDefault(); browse(-1); return; }
+    if (e.key === "ArrowRight" && !isReview()) { e.preventDefault(); browse(1); return; }
+    if (isBrowsing()) {
+      if (e.key === "Enter") { e.preventDefault(); load(); }
+      return; // 浏览模式不接受打字
+    }
+    if (!word) return;
     if (e.key === "Tab") {
       e.preventDefault();
       revealed = true; typed = 0;
@@ -111,20 +168,39 @@
       document.addEventListener("keydown", onKey);
       load();
     },
-    refresh() { load(); },
-    reset() { word = null; root.innerHTML = ""; },
+    refresh() { review = null; load(); },
+    reset() { word = null; review = null; browseOffset = 0; root.innerHTML = ""; },
+    handleEscape() {
+      if (isReview()) { review = null; load(); return true; }
+      if (isBrowsing()) { load(); return true; }
+      return false;
+    },
+    startReview() {
+      const api = window.shell.api();
+      if (!api) return;
+      api.get_review().then((queue) => {
+        if (!queue.length) {
+          root.innerHTML = '<div class="wc-summary"><div class="big">今日没有错词 🎉</div></div>';
+          setTimeout(load, 1500);
+          return;
+        }
+        review = { queue: queue, idx: 0 };
+        browseOffset = 0;
+        setWord(queue[0]);
+      });
+    },
     showSummary(sessionWords) {
       const api = window.shell.api();
-      const done = () => {
-        root.innerHTML =
-          '<div class="wc-summary"><div class="big">本轮背了 ' + sessionWords + " 个词</div>" +
-          '<div class="sub" id="wc-sum-sub"></div></div>';
-        if (api) api.get_progress().then((p) => {
-          const sub = document.getElementById("wc-sum-sub");
-          if (sub && !p.error) sub.textContent = "累计 " + p.cursor + "/" + p.total + " · " + p.book_name;
-        });
-      };
-      done();
+      root.innerHTML =
+        '<div class="wc-summary"><div class="big">本轮背了 ' + sessionWords + " 个词</div>" +
+        '<div class="sub" id="wc-sum-sub"></div></div>';
+      if (api) api.get_progress().then((p) => {
+        const sub = document.getElementById("wc-sum-sub");
+        if (sub && !p.error) {
+          sub.textContent = "累计 " + p.cursor + "/" + p.total + " · " + p.book_name +
+            " · 今日 " + p.today + "/" + p.goal;
+        }
+      });
     },
   });
 })();

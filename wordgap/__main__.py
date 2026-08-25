@@ -112,7 +112,7 @@ def main() -> None:
     runtime = Runtime(settings=settings, notifier=notifier)
     newsfeed = NewsFeed()
     newsfeed.maybe_refresh()
-    bridge = open_bridge(DB_PATH, runtime, newsfeed)
+    bridge = open_bridge(DB_PATH, runtime, newsfeed, settings)
 
     _start_server(runtime, settings)
     _start_ticker(runtime, newsfeed)

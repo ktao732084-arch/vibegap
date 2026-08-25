@@ -73,6 +73,73 @@ def test_get_news(env):
     assert news == [{"title": "新闻", "source": "s", "url": "u", "published_at": ""}]
 
 
+def test_peek_word_browsing(env):
+    bridge, _, _ = env
+    bridge.commit_word("pass")  # cursor=1
+    assert bridge.peek_word(-1)["name"] == "word0"
+    assert bridge.peek_word(0)["name"] == "word1"
+    assert bridge.peek_word(1)["name"] == "word2"
+    assert bridge.peek_word(-2) == {"error": "out_of_range"}
+    assert bridge.peek_word(99) == {"error": "out_of_range"}
+    # 浏览不动游标
+    assert bridge.get_progress()["cursor"] == 1
+
+
+def test_book_switching(env):
+    bridge, _, _ = env
+    from wordgap.store.db import connect as _connect
+    books = bridge.list_books()
+    assert books[0]["current"] is True
+    assert bridge.set_book(9999) == {"error": "wordbook 9999 not found"}
+
+
+def test_review_flow(env):
+    bridge, _, _ = env
+    bridge.commit_word("fail", 2)   # word0 错
+    bridge.commit_word("pass")      # word1 对
+    bridge.commit_word("skip")      # word2 跳过
+    queue = bridge.get_review()
+    assert [w["name"] for w in queue] == ["word0", "word2"]
+    assert bridge.log_review(queue[0]["word_index"], "pass") == {"ok": True}
+    assert queue[0]["word_index"] not in [
+        w["word_index"] for w in bridge.get_review()
+    ]  # 复习通过后移出队列
+    assert "error" in bridge.log_review(999, "pass")
+    assert "error" in bridge.log_review(0, "bogus")
+
+
+def test_daily_goal_in_progress(env):
+    bridge, _, _ = env
+    p = bridge.get_progress()
+    assert p["goal"] == 50
+    assert p["today"] == 0
+    bridge.commit_word("pass")
+    assert bridge.get_progress()["today"] == 1
+
+
+def test_get_state_session_counts_and_cwd(env):
+    bridge, runtime, _ = env
+    from wordgap.daemon.events import Agent, AgentEvent, EventKind
+
+    runtime.handle_event(
+        AgentEvent(Agent.CODEX, "a", EventKind.RUNNING, ts=None, cwd="E:/proj")
+    )
+    runtime.handle_event(AgentEvent(Agent.CODEX, "b", EventKind.RUNNING, ts=None))
+    runtime.handle_event(AgentEvent(Agent.CODEX, "b", EventKind.DONE, ts=None))
+    state = bridge.get_state()
+    assert state["active_count"] == 1
+    assert state["done_count"] == 1
+    by_id = {s["session_id"]: s for s in state["sessions"]}
+    assert by_id["a"]["cwd"] == "E:/proj"
+    assert by_id["a"]["running"] is True
+    assert by_id["b"]["running"] is False
+
+
+def test_open_path_rejects_non_dir(env):
+    bridge, _, _ = env
+    assert bridge.open_path("Z:/definitely/not/a/dir") == {"error": "not_a_dir"}
+
+
 def test_get_state_running_agents(env):
     bridge, runtime, _ = env
     from wordgap.daemon.events import Agent, AgentEvent, EventKind

@@ -2,7 +2,16 @@
 :root {
   --bg: #10151c; --card: #171d26; --ink: #e8ebf2; --ink-2: #98a2b3;
   --accent: #4fa3b3; --good: #5fc79a; --bad: #d86a52; --amber: #d3b26a;
-  --border: rgba(255,255,255,0.08);
+  --border: rgba(255,255,255,0.08); --overlay-bg: rgba(16,21,28,0.97);
+  --slot-dim: rgba(232,235,242,0.18);
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f5f6; --card: #ffffff; --ink: #1c2733; --ink-2: #5c6672;
+    --accent: #2a7f91; --good: #1f8f63; --bad: #c14e36; --amber: #96741f;
+    --border: rgba(28,39,51,0.12); --overlay-bg: rgba(244,245,246,0.97);
+    --slot-dim: rgba(28,39,51,0.22);
+  }
 }
 html, body { height: 100%; overflow: hidden; }
 body {
@@ -25,6 +34,25 @@ body {
   cursor: pointer; padding: 1px 6px; border-radius: 4px; font-size: 12px;
 }
 #btn-close:hover { background: rgba(216,106,82,0.25); color: var(--bad); }
+#status-text, #status-agents, #btn-review { cursor: pointer; }
+#status-text:hover, #status-agents:hover, #btn-review:hover { color: var(--accent); }
+#btn-review { font-size: 11px; }
+
+#overlay {
+  position: absolute; left: 6px; right: 6px; top: 26px; bottom: 30px;
+  background: var(--overlay-bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; overflow-y: auto; z-index: 10; font-size: 12px;
+}
+#overlay h4 { font-size: 11px; color: var(--ink-2); margin-bottom: 6px; font-weight: 600; }
+.ov-row {
+  display: flex; align-items: center; gap: 6px; padding: 4px 6px;
+  border-radius: 5px; cursor: pointer; line-height: 1.5;
+}
+.ov-row:hover { background: var(--border); }
+.ov-row .dot { flex-shrink: 0; }
+.ov-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-sub { color: var(--ink-2); font-size: 11px; }
+.ov-cur { color: var(--good); font-weight: 700; }
 #banner {
   font-size: 12px; padding: 5px 8px; border-radius: 6px; margin-bottom: 4px;
   background: rgba(95,199,154,0.15); color: var(--good); font-weight: 600;
@@ -50,7 +78,7 @@ body {
   font-family: ui-monospace, Consolas, monospace; font-size: 26px; font-weight: 700;
   min-height: 36px;
 }
-.wc-word .ch { color: rgba(232,235,242,0.18); border-bottom: 2px solid var(--border); min-width: 18px; text-align: center; }
+.wc-word .ch { color: var(--slot-dim); border-bottom: 2px solid var(--border); min-width: 18px; text-align: center; }
 .wc-word .ch.ok { color: var(--good); border-color: var(--good); }
 .wc-word .ch.reveal { color: var(--amber); }
 .wc-word.shake { animation: shake 0.28s; }

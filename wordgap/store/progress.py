@@ -43,12 +43,18 @@ def seeded_order(count: int, seed: int) -> list[int]:
 def get_next_word(conn: sqlite3.Connection, wordbook_id: int) -> NextWord:
     """按当前游标取下一个词。"""
     row = _get_progress_row(conn, wordbook_id)
+    return get_word_at(conn, wordbook_id, row["cursor"])
+
+
+def get_word_at(conn: sqlite3.Connection, wordbook_id: int, position: int) -> NextWord:
+    """按任意位置取词(←→ 浏览上一个/下一个用),只读不动游标。"""
+    row = _get_progress_row(conn, wordbook_id)
     words = get_words(conn, wordbook_id)
-    index = _word_index_at(row, len(words), row["cursor"])
+    index = _word_index_at(row, len(words), position)
     return NextWord(
         word=words[index],
         original_index=index,
-        position=row["cursor"],
+        position=position,
         total=len(words),
     )
 
