@@ -92,11 +92,15 @@ body {
 .wc-word .ch { color: var(--slot-dim); border-bottom: 2px solid var(--border); min-width: 18px; text-align: center; }
 .wc-word .ch.ok { color: var(--good); border-color: var(--good); }
 .wc-word .ch.reveal { color: var(--amber); }
-.wc-word .ch.cur {
-  border-left: 2px solid var(--accent);
+.wc-word .ch { position: relative; }
+.wc-word .ch.cur::before {
+  content: ""; position: absolute; left: -2px; top: 50%;
+  transform: translateY(-50%);
+  width: 2px; height: 1.05em;
+  background: var(--accent);
   animation: wc-blink 1s steps(1) infinite;
 }
-@keyframes wc-blink { 50% { border-left-color: transparent; } }
+@keyframes wc-blink { 50% { opacity: 0; } }
 .wc-word.shake { animation: shake 0.28s; }
 @keyframes shake {
   0%,100% { transform: translateX(0); } 25% { transform: translateX(-6px); }
