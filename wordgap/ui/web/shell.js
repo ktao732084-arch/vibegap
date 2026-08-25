@@ -31,11 +31,19 @@
     onAgentFinished(info) {
       state.softClosing = true;
       const banner = el("banner");
-      banner.textContent = info.waiting
-        ? info.agent + " 等待确认 · 拼完当前词后收起"
-        : info.agent + " 已完成 · 拼完当前词后收起";
+      const base = info.waiting ? info.agent + " 等待确认" : info.agent + " 已完成";
+      banner.textContent = base;
       banner.classList.toggle("waiting", !!info.waiting);
       banner.classList.remove("hidden");
+      const api = shell.api();
+      if (api && api.get_state) {
+        // 文案如实反映:还有别的任务在跑就不承诺"收起"
+        api.get_state().then((s) => {
+          if (!state.softClosing) return;
+          banner.textContent = base +
+            (s.active_count > 0 ? " · 其他任务仍在运行,继续背" : " · 拼完当前词后收起");
+        }).catch(() => {});
+      }
     },
     onClearBanner() {
       state.softClosing = false;
@@ -51,10 +59,8 @@
       if (!api) return;
       api.get_progress().then((p) => {
         if (p.error) { el("status-text").textContent = "未导入词书"; return; }
-        const mode = p.mode === "shuffled" ? "乱序" : "顺序";
         el("status-text").textContent =
-          p.cursor + "/" + p.total + " · " + p.book_name + " · " + mode +
-          " · 今日" + p.today + "/" + p.goal;
+          p.cursor + "/" + p.total + " " + p.book_name + " · 今" + p.today + "/" + p.goal;
       }).catch(() => {});
     },
     updateAgents() {
