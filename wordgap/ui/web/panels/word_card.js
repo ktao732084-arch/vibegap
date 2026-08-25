@@ -6,7 +6,8 @@
   let word = null;        // 当前显示的词
   let typed = 0;
   let typos = 0;
-  let revealed = false;
+  let revealed = false;  // 当前是否显示答案(Tab 开关)
+  let peeked = false;    // 本词是否看过答案(看过即记 fail)
   let busy = false;
   let browseOffset = 0;   // 0=正常打字;≠0=浏览模式(只读)
   let review = null;      // null=正常;{queue:[], idx:0}=复习模式
@@ -66,7 +67,7 @@
   }
 
   function setWord(w) {
-    word = w; typed = 0; typos = 0; revealed = false;
+    word = w; typed = 0; typos = 0; revealed = false; peeked = false;
     render();
     pronounce();
   }
@@ -144,7 +145,9 @@
     if (!word) return;
     if (e.key === "Tab") {
       e.preventDefault();
-      revealed = true; typed = 0;
+      revealed = !revealed;  // 再按一次收起答案
+      if (revealed) peeked = true;
+      typed = 0;
       render();
       return;
     }
@@ -155,7 +158,7 @@
       typed += 1;
       if (typed >= word.name.length) {
         render();
-        commit(revealed ? "fail" : "pass");
+        commit(peeked ? "fail" : "pass");
         return;
       }
     } else {
