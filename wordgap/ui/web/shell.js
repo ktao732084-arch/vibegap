@@ -189,6 +189,14 @@
     if (api && api.request_focus) api.request_focus();
   }, true);
 
+  // 键盘焦点指示:有焦点才显示打字光标(kb-focus 门控 caret 的 CSS)
+  const syncFocus = () => {
+    document.body.classList.toggle("kb-focus", document.hasFocus());
+  };
+  window.addEventListener("focus", syncFocus);
+  window.addEventListener("blur", syncFocus);
+  syncFocus();
+
   window.addEventListener("pywebviewready", () => {
     el("btn-close").addEventListener("click", () => shell.escape());
     el("status-agents").addEventListener("click", () => {

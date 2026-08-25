@@ -93,6 +93,7 @@ body {
 .wc-word .ch.ok { color: var(--good); border-color: var(--good); }
 .wc-word .ch.reveal { color: var(--amber); }
 .wc-word .ch { position: relative; }
+body:not(.kb-focus) .wc-word .ch.cur::before { display: none; }  /* 无键盘焦点不显示光标 */
 .wc-word .ch.cur::before {
   content: ""; position: absolute; left: -2px; top: 50%;
   transform: translateY(-50%);
