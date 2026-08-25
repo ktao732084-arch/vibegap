@@ -226,6 +226,29 @@ class Bridge:
         except Exception as exc:  # noqa: BLE001 - 焦点失败退化为"再点一次"
             logger.warning("request_focus failed: %s", exc)
 
+    def activate_session(self, agent: str, cwd: str) -> dict:
+        """把该会话所属的 agent 窗口置顶(按标题匹配项目名+agent 名);找不到退回开目录。"""
+        import os
+
+        from wordgap.ui import win32util
+
+        leaf = Path(cwd).name if cwd else ""
+        hints = {
+            "claude-code": ["claude"],
+            "codex": ["codex"],
+            "pi": ["pi -", "pi agent"],
+            "dsh": ["dsh", "deepseek"],
+            "workbuddy": ["workbuddy"],
+        }.get(str(agent), [])
+        hwnd = win32util.find_best_window([leaf], hints)
+        if hwnd is not None and win32util.activate_window(hwnd):
+            return {"ok": True, "via": "window"}
+        target = Path(str(cwd)) if cwd else None
+        if target and target.is_dir():
+            os.startfile(str(target))  # noqa: S606
+            return {"ok": True, "via": "folder"}
+        return {"error": "not_found"}
+
     def open_path(self, path: str) -> dict:
         """打开某会话的项目目录(会话面板点击路径)。仅接受真实存在的目录。"""
         import os

@@ -88,8 +88,10 @@ body {
   width: 52px; padding: 1px 4px; text-align: center;
   background: var(--card); color: var(--ink);
   border: 1px solid var(--accent); border-radius: 5px;
-  font: inherit; outline: none;
+  font: inherit; outline: none; -moz-appearance: textfield;
 }
+.num-input::-webkit-outer-spin-button,
+.num-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 #btn-review { font-size: 11px; }
 
 #overlay {

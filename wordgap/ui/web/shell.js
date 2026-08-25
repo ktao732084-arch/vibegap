@@ -112,13 +112,18 @@
         });
         return "<h4>" + esc(agent) + "</h4>" + rows.join("");
       });
-      openOverlay('<h4>会话(点击打开项目目录)</h4>' +
+      openOverlay('<h4>会话(点击跳转到对应窗口)</h4>' +
         (blocks.length ? blocks.join("") : '<div class="ov-sub">还没有会话</div>'));
-      el("overlay").querySelectorAll(".ov-row").forEach((row) => {
+      el("overlay").querySelectorAll(".ov-row").forEach((row, i) => {
         row.addEventListener("click", () => {
-          const cwd = row.getAttribute("data-cwd");
           const api = shell.api();
-          if (cwd && api) api.open_path(cwd);
+          if (!api) return;
+          const flat = [];
+          Object.keys(groups).forEach((agent) => {
+            groups[agent].forEach((s) => flat.push(s));
+          });
+          const sess = flat[i];
+          if (sess) api.activate_session(sess.agent, sess.cwd || "");
         });
       });
     },
@@ -204,7 +209,6 @@
         '" type="number" value="' + s[key] + '">';
       const inp = el("ni-" + key);
       inp.focus();
-      inp.select();
       let isDone = false;
       const commitVal = () => {
         if (isDone) return;
