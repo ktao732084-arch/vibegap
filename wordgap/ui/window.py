@@ -92,7 +92,7 @@ def create_window(bridge, kv_get, kv_set):
         x=x,
         y=y,
         frameless=True,
-        easy_drag=True,
+        easy_drag=False,  # 整窗拖拽在无边框窗口上有"跟随鼠标"卡死问题;改用状态栏拖拽区
         on_top=True,
         hidden=True,
         focus=False,

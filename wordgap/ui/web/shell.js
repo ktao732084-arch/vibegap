@@ -62,11 +62,26 @@
       if (!api || !api.get_state) return;
       api.get_state().then((s) => {
         const box = el("status-agents");
-        const busy = s.active_count > 0;
-        box.innerHTML =
-          '<span class="dot ' + (busy ? "busy" : "idle") + '"></span>' +
-          "活跃" + s.active_count + " · 完成" + s.done_count;
         shell._sessions = s.sessions || [];
+        const byAgent = {};
+        shell._sessions.forEach((sess) => {
+          const key = sess.agent;
+          if (!byAgent[key]) byAgent[key] = { active: 0, done: 0 };
+          byAgent[key][sess.running ? "active" : "done"] += 1;
+        });
+        const names = Object.keys(byAgent);
+        if (!names.length) {
+          box.innerHTML = '<span class="dot idle"></span>空闲';
+          return;
+        }
+        box.innerHTML = names.map((name) => {
+          const a = byAgent[name];
+          const parts = [];
+          if (a.active) parts.push("活" + a.active);
+          if (a.done) parts.push("完" + a.done);
+          return '<span class="dot ' + (a.active ? "busy" : "idle") + '"></span>' +
+            shortAgent(name) + " " + parts.join(" ");
+        }).join('<span class="ag-sep">|</span>');
       }).catch(() => {});
     },
 
@@ -74,18 +89,25 @@
     closeOverlay() { el("overlay").classList.add("hidden"); },
     isOverlayOpen() { return !el("overlay").classList.contains("hidden"); },
     showSessions() {
-      const rows = (shell._sessions || []).map((s) => {
-        const dot = '<span class="dot ' + (s.running ? "busy" : "idle") + '"></span>';
-        const when = (s.last_event_at || "").slice(11, 16);
-        const cwd = s.cwd || "";
-        return '<div class="ov-row" data-cwd="' + esc(cwd) + '">' + dot +
-          '<span class="ov-main">' + esc(s.agent) +
-          ' <span class="ov-sub">' + esc(s.session_id.slice(0, 8)) + " · " + when +
-          (cwd ? " · " + esc(shortPath(cwd)) : "") + "</span></span>" +
-          '<span class="ov-sub">' + (s.running ? "运行中" : "已完成") + "</span></div>";
+      const groups = {};
+      (shell._sessions || []).forEach((s) => {
+        (groups[s.agent] = groups[s.agent] || []).push(s);
       });
-      openOverlay("<h4>会话(点击打开项目目录)</h4>" +
-        (rows.length ? rows.join("") : '<div class="ov-sub">还没有会话</div>'));
+      const blocks = Object.keys(groups).map((agent) => {
+        const rows = groups[agent].map((s) => {
+          const dot = '<span class="dot ' + (s.running ? "busy" : "idle") + '"></span>';
+          const when = (s.last_event_at || "").slice(11, 16);
+          const cwd = s.cwd || "";
+          return '<div class="ov-row" data-cwd="' + esc(cwd) + '">' + dot +
+            '<span class="ov-main"><span class="ov-sub">' +
+            esc(s.session_id.slice(0, 8)) + " · " + when +
+            (cwd ? " · " + esc(shortPath(cwd)) : "") + "</span></span>" +
+            '<span class="ov-sub">' + (s.running ? "运行中" : "已完成") + "</span></div>";
+        });
+        return "<h4>" + esc(agent) + "</h4>" + rows.join("");
+      });
+      openOverlay('<h4>会话(点击打开项目目录)</h4>' +
+        (blocks.length ? blocks.join("") : '<div class="ov-sub">还没有会话</div>'));
       el("overlay").querySelectorAll(".ov-row").forEach((row) => {
         row.addEventListener("click", () => {
           const cwd = row.getAttribute("data-cwd");
@@ -139,6 +161,9 @@
   function shortPath(p) {
     const parts = String(p).split(/[\\/]/).filter(Boolean);
     return parts.length > 2 ? "…/" + parts.slice(-2).join("/") : p;
+  }
+  function shortAgent(name) {
+    return name === "claude-code" ? "claude" : name;
   }
 
   window.shell = shell;
