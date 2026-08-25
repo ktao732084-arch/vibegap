@@ -23,9 +23,10 @@ def test_install_into_empty_settings():
     result = cc_install.apply_install({}, "claude-code")
     assert set(result["hooks"]) == {"UserPromptSubmit", "Stop", "Notification"}
     stop_cmd = result["hooks"]["Stop"][0]["hooks"][0]["command"]
-    assert "notify.ps1" in stop_cmd
-    assert "-Event done" in stop_cmd
-    assert "-Agent claude-code" in stop_cmd
+    assert stop_cmd.startswith("curl.exe ")
+    assert "/hook/claude-code/done" in stop_cmd
+    assert "src=wordgap" in stop_cmd
+    assert '"' not in stop_cmd and "&" not in stop_cmd  # 任何 shell 下免转义
 
 
 def test_install_preserves_existing_user_hooks():
@@ -60,11 +61,40 @@ def test_uninstall_from_clean_settings_is_noop():
     assert cc_install.apply_uninstall(settings) == settings
 
 
+def test_port_is_threaded_into_command():
+    result = cc_install.apply_install({}, "claude-code", port=9999)
+    cmd = result["hooks"]["Stop"][0]["hooks"][0]["command"]
+    assert ":9999/hook/" in cmd
+
+
+def test_default_port_present():
+    result = cc_install.apply_install({}, "claude-code")
+    cmd = result["hooks"]["Stop"][0]["hooks"][0]["command"]
+    assert ":8765/hook/" in cmd
+
+
+@pytest.mark.parametrize(
+    "bad_settings",
+    [
+        {"hooks": []},                          # hooks 不是对象
+        {"hooks": {"Stop": "not-a-list"}},      # 事件值不是列表
+        {"hooks": {"Stop": [{"hooks": 42}]}},   # matcher.hooks 不是列表
+    ],
+)
+def test_malformed_hooks_shape_exits_cleanly(bad_settings):
+    with pytest.raises(SystemExit):
+        cc_install.validate_hooks_shape(bad_settings)
+
+
+def test_valid_hooks_shape_passes():
+    cc_install.validate_hooks_shape({})
+    cc_install.validate_hooks_shape({"hooks": {"Stop": [USER_HOOK]}})
+
+
 def test_agent_override_for_dsh_bridge():
     result = cc_install.apply_install({}, "dsh")
     cmd = result["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
-    assert "-Agent dsh" in cmd
-    assert "-Event running" in cmd
+    assert "/hook/dsh/running" in cmd
 
 
 def test_save_and_backup_roundtrip(tmp_path):

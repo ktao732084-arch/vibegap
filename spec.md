@@ -283,7 +283,8 @@ CREATE TABLE kv (
 
 ## 5. Adapter 设计(每个 agent 的适配细节)
 
-统一原则:**adapter 只上报事件,不包含任何业务逻辑;单个钩子脚本 ≤20 行**;
+统一原则:**adapter 只上报事件,不包含任何业务逻辑;单个钩子脚本 ≤30 行**;
+钩子脚本内一切外部交互都必须有界(stdin 读取、HTTP 均 ≤1s 超时);
 上报失败(daemon 没开)必须静默吞掉,绝不能影响 agent 本身运行(`try/catch` + 1s 超时)。
 
 ### 5.1 Claude Code(M1)
@@ -296,9 +297,11 @@ CREATE TABLE kv (
 | `Stop` | `done` |
 | `Notification`(权限请求/空闲提醒) | `attention` |
 
-- `session_id` 直接用 hook 输入 JSON 里的 `session_id` 字段。
-- 钩子命令统一为:`powershell -NoProfile -File <安装目录>\notify.ps1 -Event running`,
-  脚本内部读 stdin 的 JSON 拿 session_id,`Invoke-RestMethod` POST,超时 1s,出错静默退出 0。
+- 钩子命令为一行裸 curl(Windows 10+ 自带,启动 ~50ms;PowerShell 方案冷启动实测 2.4s,弃用):
+  `curl.exe -s -o nul -m 1 -X POST --data-binary @- http://127.0.0.1:<port>/hook/<agent>/<event>?src=wordgap`
+  stdin 的 hook JSON 原样透传,daemon 侧解析 session_id(`POST /hook/{agent}/{event}`)。
+  URL 用路径参数、无 `&` 无引号,任何 shell 下免转义;`?src=wordgap` 兼作安装器识别标记。
+- `notify.ps1` 保留在仓库作为无 curl 环境的后备方案(stdin 读取与 HTTP 均 1s 有界)。
 - `install.py` 职责:**merge** 进现有 settings.json(绝不覆盖用户已有 hooks),写入前备份原文件,
   提供 `--uninstall` 精确移除自己写入的条目。
 

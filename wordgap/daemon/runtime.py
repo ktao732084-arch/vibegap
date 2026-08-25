@@ -2,12 +2,16 @@
 
 全项目唯一的可变状态容器(组合根之外)。daemon 不 import ui(§7.2):
 UI 侧通过 Notifier 协议注入,效果在这里翻译成 Notifier 调用。
+
+锁纪律:锁内只做状态归约,效果一律在锁外执行——通知器可能很慢(toast 子进程)
+甚至回调回 Runtime,锁内执行会阻塞钩子上报乃至死锁。代价是极端并发下
+效果执行顺序可能与状态转移顺序有微小偏差,对幂等的 UI 操作无害。
 """
 from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Callable, Protocol
 
@@ -61,12 +65,14 @@ class Runtime:
         self._sched = scheduler.INITIAL_SCHEDULER
 
     def handle_event(self, event: AgentEvent) -> None:
-        """处理一条 adapter 上报事件。"""
+        """处理一条 adapter 上报事件;ts 缺省时用注入时钟补齐。"""
         with self._lock:
+            if event.ts is None:
+                event = replace(event, ts=self._clock())
             self._sessions, finished = sessions.reduce_event(self._sessions, event)
             effects = self._sync_running_state()
             effects += self._apply_finished(finished)
-            self._run_effects(effects)
+        self._run_effects(effects)
         logger.debug("event %s/%s -> phase %s", event.agent.value, event.kind.value, self._sched.phase.name)
 
     def tick(self) -> None:
@@ -82,7 +88,8 @@ class Runtime:
                 sessions.any_running(self._sessions),
                 timedelta(seconds=self._settings.popup_delay_sec),
             )
-            self._run_effects(effects + eff)
+            effects += eff
+        self._run_effects(effects)
 
     def word_committed(self) -> None:
         """UI 每提交一个词调用(M2 起使用)。"""
@@ -93,19 +100,19 @@ class Runtime:
                 self._clock(),
                 timedelta(seconds=self._settings.summary_linger_sec),
             )
-            self._run_effects(effects)
+        self._run_effects(effects)
 
     def escape(self) -> None:
         """UI Esc 逃生。"""
         with self._lock:
             self._sched, effects = scheduler.on_escape(self._sched)
-            self._run_effects(effects)
+        self._run_effects(effects)
 
     def hotkey_toggle(self) -> None:
         """全局热键手动唤起/隐藏。"""
         with self._lock:
             self._sched, effects = scheduler.on_hotkey_toggle(self._sched)
-            self._run_effects(effects)
+        self._run_effects(effects)
 
     def snapshot(self) -> RuntimeSnapshot:
         """当前状态只读快照(调试端点用)。"""

@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 MARKER = "wordgap"
+DEFAULT_PORT = 8765  # 与主包 config.DAEMON_PORT 一致;adapter 零依赖故重复定义(spec §7.2)
 HOOK_EVENTS = {
     "UserPromptSubmit": "running",
     "Stop": "done",
@@ -26,12 +27,17 @@ HOOK_EVENTS = {
 }
 
 
-def build_command(event: str, agent: str) -> str:
-    """生成钩子命令行(绝对路径指向本目录的 notify.ps1)。"""
-    script = Path(__file__).resolve().parent / "notify.ps1"
+def build_command(event: str, agent: str, port: int = DEFAULT_PORT) -> str:
+    """生成钩子命令行:一行裸 curl 透传 stdin 到 daemon(~50ms,免 PowerShell 冷启动)。
+
+    URL 用路径参数、无 & 无空格,不需要任何引号/转义,任何 shell 下都安全。
+    daemon 不在时 curl -s 静默失败(非阻塞),不打扰 agent。
+    ?src=wordgap 供 _is_ours 识别本工具写入的条目。
+    """
+    url = f"http://127.0.0.1:{port}/hook/{agent}/{event}?src=wordgap"
     return (
-        f'powershell -NoProfile -ExecutionPolicy Bypass -File "{script}" '
-        f"-Event {event} -Agent {agent}"
+        "curl.exe -s -o nul --noproxy 127.0.0.1 --connect-timeout 0.3 -m 1 "
+        f"-X POST --data-binary @- {url}"
     )
 
 
@@ -69,14 +75,29 @@ def _strip_ours(matchers: list) -> list:
     return [m for m in kept_matchers if m.get("hooks")]
 
 
-def apply_install(settings: dict, agent: str) -> dict:
+def validate_hooks_shape(settings: dict) -> None:
+    """settings.hooks 结构不合预期时给出友好报错(而非深处 traceback)。"""
+    hooks = settings.get("hooks")
+    if hooks is None:
+        return
+    if not isinstance(hooks, dict):
+        sys.exit("ERROR: settings 'hooks' must be an object; fix it manually first.")
+    for name, matchers in hooks.items():
+        if not isinstance(matchers, list) or not all(isinstance(m, dict) for m in matchers):
+            sys.exit(f"ERROR: settings hooks['{name}'] must be a list of objects.")
+        for matcher in matchers:
+            if "hooks" in matcher and not isinstance(matcher["hooks"], list):
+                sys.exit(f"ERROR: a matcher in hooks['{name}'] has non-list 'hooks'.")
+
+
+def apply_install(settings: dict, agent: str, port: int = DEFAULT_PORT) -> dict:
     """返回合入 wordgap 钩子后的新 settings(不修改入参)。"""
     result = json.loads(json.dumps(settings))  # deep copy
     hooks = result.setdefault("hooks", {})
     for hook_name, event in HOOK_EVENTS.items():
         matchers = _strip_ours(hooks.get(hook_name, []))
         matchers.append(
-            {"hooks": [{"type": "command", "command": build_command(event, agent)}]}
+            {"hooks": [{"type": "command", "command": build_command(event, agent, port)}]}
         )
         hooks[hook_name] = matchers
     return result
@@ -107,11 +128,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Install WordGap hooks for Claude Code")
     parser.add_argument("--settings", type=Path, default=Path.home() / ".claude" / "settings.json")
     parser.add_argument("--agent", default="claude-code")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--uninstall", action="store_true")
     args = parser.parse_args()
 
     settings = load_settings(args.settings)
-    updated = apply_uninstall(settings) if args.uninstall else apply_install(settings, args.agent)
+    validate_hooks_shape(settings)
+    updated = (
+        apply_uninstall(settings)
+        if args.uninstall
+        else apply_install(settings, args.agent, args.port)
+    )
     if updated == settings:
         print("No changes needed.")
         return

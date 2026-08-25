@@ -1,7 +1,5 @@
-# WordGap hook script for Claude Code (and Claude-Code-compatible agents).
-# Reads hook JSON from stdin, extracts session_id, reports the event to the
-# local WordGap daemon. Must NEVER slow down or break the agent:
-# catch-all, 1s timeout, always exit 0 (spec section 7.7).
+# WordGap hook for Claude-Code-compatible agents. Must never block or break
+# the agent: bounded stdin read, 1s HTTP timeout, catch-all, always exit 0.
 param(
     [string]$Event = "done",
     [string]$Agent = "claude-code",
@@ -9,9 +7,10 @@ param(
 )
 try {
     $sid = "unknown"
-    $raw = [Console]::In.ReadToEnd()
-    if ($raw) {
-        $obj = $raw | ConvertFrom-Json
+    $reader = New-Object System.IO.StreamReader([Console]::OpenStandardInput())
+    $task = $reader.ReadToEndAsync()
+    if ($task.Wait(1000) -and $task.Result) {
+        $obj = $task.Result | ConvertFrom-Json
         if ($obj.session_id) { $sid = [string]$obj.session_id }
     }
     $body = @{ agent = $Agent; session_id = $sid; event = $Event } | ConvertTo-Json -Compress

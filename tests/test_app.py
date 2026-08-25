@@ -58,6 +58,41 @@ def test_empty_session_id_rejected(client):
     assert resp.status_code == 422
 
 
+def test_browser_origin_rejected(client):
+    resp = client.post(
+        "/event",
+        json={"agent": "codex", "session_id": "s1", "event": "running"},
+        headers={"Origin": "http://evil.example"},
+    )
+    assert resp.status_code == 403
+
+
+def test_hook_endpoint_extracts_session_id(client):
+    resp = client.post(
+        "/hook/claude-code/running",
+        content=b'{"session_id": "abc-123", "cwd": "E:/x"}',
+    )
+    assert resp.status_code == 200
+    assert client.get("/state").json()["phase"] == "ARMED"
+
+
+def test_hook_endpoint_tolerates_garbage_body(client):
+    assert client.post("/hook/codex/done", content=b"{not json").status_code == 200
+    assert client.post("/hook/codex/done", content=b"").status_code == 200
+
+
+def test_hook_endpoint_rejects_unknown_agent_or_event(client):
+    assert client.post("/hook/skynet/running", content=b"{}").status_code == 422
+    assert client.post("/hook/codex/exploded", content=b"{}").status_code == 422
+
+
+def test_hook_endpoint_rejects_browser_origin(client):
+    resp = client.post(
+        "/hook/codex/done", content=b"{}", headers={"Origin": "http://evil.example"}
+    )
+    assert resp.status_code == 403
+
+
 def test_dsh_agent_accepted(client):
     resp = client.post(
         "/event", json={"agent": "dsh", "session_id": "s1", "event": "running"}

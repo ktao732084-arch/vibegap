@@ -129,6 +129,39 @@ def test_escape_and_hotkey_paths():
     assert notifier.calls[-1] == ("hide_window",)
 
 
+def test_slow_notifier_does_not_block_event_handling():
+    # review HIGH-1 回归锁:效果在锁外执行,慢通知器(如 toast 子进程)不得阻塞钩子事件
+    import threading
+    import time as _time
+
+    class SlowNotifier(FakeNotifier):
+        def show_window(self):
+            super().show_window()
+            _time.sleep(0.5)
+
+    clock = FakeClock()
+    runtime = Runtime(settings=SETTINGS, notifier=SlowNotifier(), clock=clock)
+    runtime.handle_event(_event(EventKind.RUNNING, clock=clock))
+    clock.advance(20)
+    tick_thread = threading.Thread(target=runtime.tick)  # 触发 show_window,慢 0.5s
+    tick_thread.start()
+    _time.sleep(0.1)  # 此刻 tick 已释放锁、正卡在慢效果里
+    start = _time.perf_counter()
+    runtime.handle_event(_event(EventKind.DONE, clock=clock))
+    elapsed = _time.perf_counter() - start
+    tick_thread.join()
+    assert elapsed < 0.3, f"event blocked {elapsed:.2f}s by slow notifier"
+    assert runtime.snapshot().phase == "SOFT_CLOSING"
+
+
+def test_event_without_ts_uses_injected_clock():
+    runtime, _, clock = _make()
+    runtime.handle_event(AgentEvent(Agent.CLAUDE_CODE, "s1", EventKind.RUNNING, ts=None))
+    clock.advance(31 * 60)
+    runtime.tick()  # 若 ts 落在假时钟上,TTL 清理应生效
+    assert runtime.snapshot().session_count == 0
+
+
 def test_notifier_failure_does_not_break_runtime():
     class BrokenNotifier(FakeNotifier):
         def show_window(self):

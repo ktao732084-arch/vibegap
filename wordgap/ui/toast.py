@@ -9,6 +9,7 @@ import logging
 import os
 import subprocess
 
+from wordgap.config import TOAST_TIMEOUT_SEC
 from wordgap.daemon.events import AgentFinished, EventKind
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,6 @@ _TOAST_SCRIPT = (
     "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
     "'WordGap').Show($toast)"
 )
-_TOAST_TIMEOUT_SEC = 5
 
 
 class ToastNotifier:
@@ -53,7 +53,7 @@ class ToastNotifier:
             subprocess.run(
                 ["powershell", "-NoProfile", "-Command", _TOAST_SCRIPT],
                 env=env,
-                timeout=_TOAST_TIMEOUT_SEC,
+                timeout=TOAST_TIMEOUT_SEC,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 check=False,
             )

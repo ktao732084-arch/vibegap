@@ -22,12 +22,12 @@ class EventKind(str, Enum):
 
 @dataclass(frozen=True)
 class AgentEvent:
-    """Adapter 上报的原始事件。"""
+    """Adapter 上报的原始事件。ts 为 None 时由 Runtime 用注入时钟补齐(§7.3)。"""
 
     agent: Agent
     session_id: str
     kind: EventKind
-    ts: datetime
+    ts: datetime | None
 
 
 @dataclass(frozen=True)
