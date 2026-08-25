@@ -25,7 +25,8 @@
     if (!word) return;
     const showAll = isBrowsing() || revealed;
     const chars = word.name.split("").map((c, i) => {
-      const cls = i < typed ? "ch ok" : showAll ? "ch reveal" : "ch";
+      let cls = i < typed ? "ch ok" : showAll ? "ch reveal" : "ch";
+      if (i === typed && !isBrowsing()) cls += " cur";  // 闪烁光标:当前待输入位
       const shown = i < typed || showAll ? c : " ";
       return '<span class="' + cls + '">' + shown + "</span>";
     }).join("");
@@ -153,6 +154,7 @@
     }
     if (e.key.length !== 1 || !/[a-zA-Z'\- ]/.test(e.key)) return;
     e.preventDefault();
+    if (revealed) revealed = false;  // 开始拼写,答案自动消失(peeked 仍记 fail)
     const expected = word.name[typed];
     if (e.key.toLowerCase() === expected.toLowerCase()) {
       typed += 1;
