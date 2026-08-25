@@ -4,7 +4,7 @@
 
   const panels = [];
   const state = { sessionWords: 0, softClosing: false };
-  const prefs = { auto_pronounce: true };
+  const prefs = { auto_pronounce: true, theme: "auto" };
   const el = (id) => document.getElementById(id);
 
   const shell = {
@@ -217,13 +217,31 @@
       const api = shell.api();
       if (api) api.set_pref("auto_pronounce", prefs.auto_pronounce);
     });
+    const THEME_ICONS = { auto: "◐", light: "☀", dark: "☾" };
+    const THEME_NAMES = { auto: "自动", light: "日间", dark: "夜间" };
+    const themeBtn = el("btn-theme");
+    const applyTheme = () => {
+      document.body.classList.remove("theme-light", "theme-dark");
+      if (prefs.theme !== "auto") document.body.classList.add("theme-" + prefs.theme);
+      themeBtn.textContent = THEME_ICONS[prefs.theme];
+      themeBtn.title = "主题:" + THEME_NAMES[prefs.theme] + "(点击切换)";
+    };
+    themeBtn.addEventListener("click", () => {
+      const order = ["auto", "light", "dark"];
+      prefs.theme = order[(order.indexOf(prefs.theme) + 1) % order.length];
+      applyTheme();
+      const api = shell.api();
+      if (api) api.set_pref("theme", prefs.theme);
+    });
     const apiNow = shell.api();
     if (apiNow && apiNow.get_prefs) {
       apiNow.get_prefs().then((p) => {
         prefs.auto_pronounce = !!p.auto_pronounce;
+        prefs.theme = p.theme || "auto";
         renderSound();
-      }).catch(renderSound);
-    } else { renderSound(); }
+        applyTheme();
+      }).catch(() => { renderSound(); applyTheme(); });
+    } else { renderSound(); applyTheme(); }
     panels.forEach((p) => p.mount && p.mount());
     shell.updateStatus();
     shell.updateAgents();

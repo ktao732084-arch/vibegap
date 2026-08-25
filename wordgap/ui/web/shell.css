@@ -13,6 +13,19 @@
     --slot-dim: rgba(28,39,51,0.22);
   }
 }
+/* 手动主题覆盖(优先级高于系统偏好) */
+body.theme-light {
+  --bg: #f4f5f6; --card: #ffffff; --ink: #1c2733; --ink-2: #5c6672;
+  --accent: #2a7f91; --good: #1f8f63; --bad: #c14e36; --amber: #96741f;
+  --border: rgba(28,39,51,0.12); --overlay-bg: rgba(244,245,246,0.97);
+  --slot-dim: rgba(28,39,51,0.22);
+}
+body.theme-dark {
+  --bg: #10151c; --card: #171d26; --ink: #e8ebf2; --ink-2: #98a2b3;
+  --accent: #4fa3b3; --good: #5fc79a; --bad: #d86a52; --amber: #d3b26a;
+  --border: rgba(255,255,255,0.08); --overlay-bg: rgba(16,21,28,0.97);
+  --slot-dim: rgba(232,235,242,0.18);
+}
 html, body { height: 100%; overflow: hidden; }
 body {
   background: var(--bg); color: var(--ink);
@@ -43,9 +56,10 @@ body {
   cursor: pointer; padding: 1px 6px; border-radius: 4px; font-size: 12px;
 }
 #btn-close:hover { background: rgba(216,106,82,0.25); color: var(--bad); }
-#status-text, #status-agents, #btn-review, #btn-sound { cursor: pointer; }
-#status-text:hover, #status-agents:hover, #btn-review:hover, #btn-sound:hover { color: var(--accent); }
-#btn-sound { font-size: 11px; }
+#status-text, #status-agents, #btn-review, #btn-sound, #btn-theme { cursor: pointer; }
+#status-text:hover, #status-agents:hover, #btn-review:hover, #btn-sound:hover,
+#btn-theme:hover { color: var(--accent); }
+#btn-sound, #btn-theme { font-size: 11px; }
 #btn-review { font-size: 11px; }
 
 #overlay {

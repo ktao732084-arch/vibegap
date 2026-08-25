@@ -137,9 +137,11 @@ def test_get_state_session_counts_and_cwd(env):
 
 def test_prefs_roundtrip(env):
     bridge, _, _ = env
-    assert bridge.get_prefs() == {"auto_pronounce": True}  # 默认开
+    assert bridge.get_prefs() == {"auto_pronounce": True, "theme": "auto"}  # 默认
     assert bridge.set_pref("auto_pronounce", False) == {"ok": True}
-    assert bridge.get_prefs() == {"auto_pronounce": False}
+    assert bridge.set_pref("theme", "light") == {"ok": True}
+    assert bridge.get_prefs() == {"auto_pronounce": False, "theme": "light"}
+    assert bridge.set_pref("theme", "neon") == {"error": "bad_value"}
     assert bridge.set_pref("evil_key", True) == {"error": "bad_key"}
 
 

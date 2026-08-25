@@ -17,7 +17,8 @@ from wordgap.store import progress, stats, wordbooks
 from wordgap.store.db import connect, kv_get, kv_set
 from wordgap.store.wordbooks import WordbookError
 
-_PREF_KEYS = ("auto_pronounce",)  # UI 偏好白名单,kv 表以 pref_ 前缀存储
+_PREF_KEYS = ("auto_pronounce", "theme")  # UI 偏好白名单,kv 表以 pref_ 前缀存储
+_THEMES = ("auto", "light", "dark")
 
 logger = logging.getLogger(__name__)
 
@@ -230,17 +231,27 @@ class Bridge:
         return {"ok": True}
 
     def get_prefs(self) -> dict:
-        """UI 偏好(目前只有自动发音开关,默认开)。"""
+        """UI 偏好(自动发音开关、主题)。"""
         with self._lock:
-            raw = kv_get(self._conn, "pref_auto_pronounce")
-        return {"auto_pronounce": raw != "0"}
+            sound = kv_get(self._conn, "pref_auto_pronounce")
+            theme = kv_get(self._conn, "pref_theme")
+        return {
+            "auto_pronounce": sound != "0",
+            "theme": theme if theme in _THEMES else "auto",
+        }
 
-    def set_pref(self, key: str, value: bool) -> dict:
+    def set_pref(self, key: str, value) -> dict:
         """写 UI 偏好,持久化到 kv 表。"""
         if key not in _PREF_KEYS:
             return {"error": "bad_key"}
+        if key == "theme":
+            if value not in _THEMES:
+                return {"error": "bad_value"}
+            stored = str(value)
+        else:
+            stored = "1" if value else "0"
         with self._lock:
-            kv_set(self._conn, f"pref_{key}", "1" if value else "0")
+            kv_set(self._conn, f"pref_{key}", stored)
         return {"ok": True}
 
     def escape(self) -> None:
