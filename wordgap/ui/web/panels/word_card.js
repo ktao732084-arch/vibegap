@@ -137,6 +137,7 @@
 
   function onKey(e) {
     if (busy) return;
+    if (window.shell.isOverlayOpen && window.shell.isOverlayOpen()) return;  // 面板打开时不吃按键
     if (e.key === "ArrowLeft" && !isReview()) { e.preventDefault(); browse(-1); return; }
     if (e.key === "ArrowRight" && !isReview()) { e.preventDefault(); browse(1); return; }
     if (isBrowsing()) {

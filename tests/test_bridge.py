@@ -145,6 +145,37 @@ def test_prefs_roundtrip(env):
     assert bridge.set_pref("evil_key", True) == {"error": "bad_key"}
 
 
+def test_settings_roundtrip(tmp_path):
+    from wordgap.config import Settings
+    from wordgap.daemon.newsfeed import NewsFeed
+    from wordgap.daemon.runtime import Runtime
+    from wordgap.ui.bridge import Bridge
+    import json as _json
+
+    db_path = tmp_path / "t.db"
+    from wordgap.store.db import connect as _connect
+    conn = _connect(db_path)
+    book = import_wordbook(conn, "t", WORDS, mode="shuffled", seed=1)
+    set_current(conn, book.id)
+    conn.close()
+    cfg = tmp_path / "config.json"
+    runtime = Runtime(settings=Settings(), notifier=FakeNotifier(), clock=FakeClock())
+    bridge = Bridge(db_path, runtime, NewsFeed(fetcher=lambda: []), Settings(), config_path=cfg)
+
+    s = bridge.get_settings()
+    assert s == {"popup_delay_sec": 18, "daily_goal": 50, "mode": "shuffled"}
+    assert bridge.set_setting("daily_goal", 80) == {"ok": True, "value": 80}
+    assert bridge.set_setting("popup_delay_sec", 999) == {"ok": True, "value": 120}  # 夹到上限
+    assert bridge.set_setting("nope", 1) == {"error": "bad_key"}
+    assert bridge.get_settings()["daily_goal"] == 80
+    saved = _json.loads(cfg.read_text(encoding="utf-8"))
+    assert saved == {"daily_goal": 80, "popup_delay_sec": 120}  # 持久化到 config.json
+    assert bridge.set_book_mode("sequential") == {"ok": True}
+    assert bridge.get_settings()["mode"] == "sequential"
+    assert "error" in bridge.set_book_mode("bogus")
+    bridge._close()
+
+
 def test_open_path_rejects_non_dir(env):
     bridge, _, _ = env
     assert bridge.open_path("Z:/definitely/not/a/dir") == {"error": "not_a_dir"}

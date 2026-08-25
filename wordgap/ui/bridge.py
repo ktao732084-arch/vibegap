@@ -5,12 +5,14 @@ check_same_thread=False + 显式锁串行化。
 """
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 import threading
+from dataclasses import replace
 from pathlib import Path
 
-from wordgap.config import Settings
+from wordgap.config import CONFIG_PATH, Settings
 from wordgap.daemon.newsfeed import NewsFeed
 from wordgap.daemon.runtime import Runtime
 from wordgap.store import progress, stats, wordbooks
@@ -19,6 +21,8 @@ from wordgap.store.wordbooks import WordbookError
 
 _PREF_KEYS = ("auto_pronounce", "theme")  # UI 偏好白名单,kv 表以 pref_ 前缀存储
 _THEMES = ("auto", "light", "dark")
+# 设置面板可改的 config.json 项:key -> (最小值, 最大值)
+_SETTING_LIMITS = {"popup_delay_sec": (5, 120), "daily_goal": (1, 1000)}
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +36,7 @@ class Bridge:
         runtime: Runtime,
         newsfeed: NewsFeed,
         settings: Settings | None = None,
+        config_path: Path | None = None,
     ) -> None:
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
@@ -40,6 +45,7 @@ class Bridge:
         self._runtime = runtime
         self._newsfeed = newsfeed
         self._settings = settings or Settings()
+        self._config_path = config_path or CONFIG_PATH
 
     def next_word(self) -> dict:
         """当前词书的下一个词 + 进度;无词书时返回 error 字段。"""
@@ -229,6 +235,60 @@ class Bridge:
             return {"error": "not_a_dir"}
         os.startfile(str(target))  # noqa: S606 - 本机目录浏览,来源为本地 agent hook
         return {"ok": True}
+
+    def get_settings(self) -> dict:
+        """设置面板数据:可调数值 + 当前词书模式。"""
+        with self._lock:
+            book_id = wordbooks.get_current(self._conn)
+            mode = None
+            if book_id is not None:
+                mode = progress.get_summary(self._conn, book_id).mode
+        return {
+            "popup_delay_sec": self._settings.popup_delay_sec,
+            "daily_goal": self._settings.daily_goal,
+            "mode": mode,
+        }
+
+    def set_setting(self, key: str, value: int) -> dict:
+        """改数值设置:写 config.json 持久化 + runtime 热更新。"""
+        if key not in _SETTING_LIMITS:
+            return {"error": "bad_key"}
+        low, high = _SETTING_LIMITS[key]
+        try:
+            value = max(low, min(high, int(value)))
+        except (TypeError, ValueError):
+            return {"error": "bad_value"}
+        self._settings = replace(self._settings, **{key: value})
+        self._runtime.update_settings(self._settings)
+        self._persist_config(key, value)
+        return {"ok": True, "value": value}
+
+    def set_book_mode(self, mode: str) -> dict:
+        """切换当前词书顺序/乱序(会重置该词书游标,前端已提示)。"""
+        with self._lock:
+            book_id = wordbooks.get_current(self._conn)
+            if book_id is None:
+                return {"error": "no_wordbook"}
+            try:
+                progress.set_mode(self._conn, book_id, mode)
+            except WordbookError as exc:
+                return {"error": str(exc)}
+        return {"ok": True}
+
+    def _persist_config(self, key: str, value: int) -> None:
+        try:
+            raw = {}
+            if self._config_path.exists():
+                loaded = json.loads(self._config_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    raw = loaded
+            raw[key] = value
+            self._config_path.parent.mkdir(parents=True, exist_ok=True)
+            self._config_path.write_text(
+                json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.error("persist config failed: %s", exc)
 
     def get_prefs(self) -> dict:
         """UI 偏好(自动发音开关、主题)。"""

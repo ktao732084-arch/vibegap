@@ -144,6 +144,86 @@
       });
     },
 
+    applyTheme() {
+      document.body.classList.remove("theme-light", "theme-dark");
+      if (prefs.theme !== "auto") document.body.classList.add("theme-" + prefs.theme);
+    },
+
+    showSettings() {
+      const api = shell.api();
+      if (!api) return;
+      Promise.all([api.get_prefs(), api.get_settings()]).then(([p, s]) => {
+        prefs.auto_pronounce = !!p.auto_pronounce;
+        prefs.theme = p.theme || "auto";
+        const chip = (group, val, label, on) =>
+          '<span class="chip' + (on ? " on" : "") + '" data-g="' + group +
+          '" data-v="' + val + '">' + label + "</span>";
+        const num = (key, val, unit) =>
+          '<span class="set-chips"><span class="num-btn" data-num="' + key +
+          '" data-d="-1">−</span><span class="num-val" id="nv-' + key + '">' +
+          val + (unit || "") + '</span><span class="num-btn" data-num="' + key +
+          '" data-d="1">+</span></span>';
+        openOverlay(
+          "<h4>设置</h4>" +
+          '<div class="set-row"><span class="set-label">主题</span><span class="set-chips">' +
+          chip("theme", "auto", "自动", prefs.theme === "auto") +
+          chip("theme", "light", "日间", prefs.theme === "light") +
+          chip("theme", "dark", "夜间", prefs.theme === "dark") + "</span></div>" +
+          '<div class="set-row"><span class="set-label">自动发音</span><span class="set-chips">' +
+          chip("sound", "1", "开", prefs.auto_pronounce) +
+          chip("sound", "0", "关", !prefs.auto_pronounce) + "</span></div>" +
+          '<div class="set-row"><span class="set-label">词书模式(切换会重置本书进度)</span><span class="set-chips">' +
+          chip("mode", "sequential", "顺序", s.mode === "sequential") +
+          chip("mode", "shuffled", "乱序", s.mode === "shuffled") + "</span></div>" +
+          '<div class="set-row"><span class="set-label">每日目标</span>' +
+          num("daily_goal", s.daily_goal) + "</div>" +
+          '<div class="set-row"><span class="set-label">弹出延迟</span>' +
+          num("popup_delay_sec", s.popup_delay_sec, "s") + "</div>"
+        );
+        shell._settingsCache = s;
+        el("overlay").querySelectorAll(".chip").forEach((c) => {
+          c.addEventListener("click", () => shell._onSettingChip(
+            c.getAttribute("data-g"), c.getAttribute("data-v")));
+        });
+        el("overlay").querySelectorAll(".num-btn").forEach((b) => {
+          b.addEventListener("click", () => shell._onSettingNum(
+            b.getAttribute("data-num"), parseInt(b.getAttribute("data-d"), 10)));
+        });
+      });
+    },
+    _onSettingChip(group, val) {
+      const api = shell.api();
+      if (!api) return;
+      if (group === "theme") {
+        prefs.theme = val;
+        shell.applyTheme();
+        api.set_pref("theme", val).then(() => shell.showSettings());
+      } else if (group === "sound") {
+        prefs.auto_pronounce = val === "1";
+        api.set_pref("auto_pronounce", prefs.auto_pronounce).then(() => shell.showSettings());
+      } else if (group === "mode") {
+        api.set_book_mode(val).then(() => {
+          shell.updateStatus();
+          panels.forEach((p) => p.refresh && p.refresh());
+          shell.showSettings();
+        });
+      }
+    },
+    _onSettingNum(key, dir) {
+      const api = shell.api();
+      const s = shell._settingsCache;
+      if (!api || !s) return;
+      const step = key === "daily_goal" ? 10 : 2;
+      api.set_setting(key, s[key] + dir * step).then((r) => {
+        if (r.ok) {
+          s[key] = r.value;
+          const node = el("nv-" + key);
+          if (node) node.textContent = r.value + (key === "popup_delay_sec" ? "s" : "");
+          shell.updateStatus();
+        }
+      });
+    },
+
     startReview() {
       shell.closeOverlay();
       panels.forEach((p) => p.startReview && p.startReview());
@@ -206,42 +286,17 @@
       shell.isOverlayOpen() ? shell.closeOverlay() : shell.showBooks();
     });
     el("btn-review").addEventListener("click", () => shell.startReview());
-    const soundBtn = el("btn-sound");
-    const renderSound = () => {
-      soundBtn.textContent = prefs.auto_pronounce ? "🔊" : "🔇";
-      soundBtn.title = prefs.auto_pronounce ? "自动发音:开" : "自动发音:关(点音标仍可发音)";
-    };
-    soundBtn.addEventListener("click", () => {
-      prefs.auto_pronounce = !prefs.auto_pronounce;
-      renderSound();
-      const api = shell.api();
-      if (api) api.set_pref("auto_pronounce", prefs.auto_pronounce);
-    });
-    const THEME_ICONS = { auto: "◐", light: "☀", dark: "☾" };
-    const THEME_NAMES = { auto: "自动", light: "日间", dark: "夜间" };
-    const themeBtn = el("btn-theme");
-    const applyTheme = () => {
-      document.body.classList.remove("theme-light", "theme-dark");
-      if (prefs.theme !== "auto") document.body.classList.add("theme-" + prefs.theme);
-      themeBtn.textContent = THEME_ICONS[prefs.theme];
-      themeBtn.title = "主题:" + THEME_NAMES[prefs.theme] + "(点击切换)";
-    };
-    themeBtn.addEventListener("click", () => {
-      const order = ["auto", "light", "dark"];
-      prefs.theme = order[(order.indexOf(prefs.theme) + 1) % order.length];
-      applyTheme();
-      const api = shell.api();
-      if (api) api.set_pref("theme", prefs.theme);
+    el("btn-settings").addEventListener("click", () => {
+      shell.isOverlayOpen() ? shell.closeOverlay() : shell.showSettings();
     });
     const apiNow = shell.api();
     if (apiNow && apiNow.get_prefs) {
       apiNow.get_prefs().then((p) => {
         prefs.auto_pronounce = !!p.auto_pronounce;
         prefs.theme = p.theme || "auto";
-        renderSound();
-        applyTheme();
-      }).catch(() => { renderSound(); applyTheme(); });
-    } else { renderSound(); applyTheme(); }
+        shell.applyTheme();
+      }).catch(() => shell.applyTheme());
+    } else { shell.applyTheme(); }
     panels.forEach((p) => p.mount && p.mount());
     shell.updateStatus();
     shell.updateAgents();

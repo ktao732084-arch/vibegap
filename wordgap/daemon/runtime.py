@@ -129,6 +129,11 @@ class Runtime:
             self._sched, effects = scheduler.on_hotkey_toggle(self._sched)
         self._run_effects(effects)
 
+    def update_settings(self, settings: Settings) -> None:
+        """设置热更新(设置面板改弹出延迟等时调用)。"""
+        with self._lock:
+            self._settings = settings
+
     def snapshot(self) -> RuntimeSnapshot:
         """当前状态只读快照(调试端点与 UI 状态栏用)。"""
         with self._lock:

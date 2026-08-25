@@ -56,10 +56,29 @@ body {
   cursor: pointer; padding: 1px 6px; border-radius: 4px; font-size: 12px;
 }
 #btn-close:hover { background: rgba(216,106,82,0.25); color: var(--bad); }
-#status-text, #status-agents, #btn-review, #btn-sound, #btn-theme { cursor: pointer; }
-#status-text:hover, #status-agents:hover, #btn-review:hover, #btn-sound:hover,
-#btn-theme:hover { color: var(--accent); }
-#btn-sound, #btn-theme { font-size: 11px; }
+#status-text, #status-agents, #btn-review, #btn-settings { cursor: pointer; }
+#status-text:hover, #status-agents:hover, #btn-review:hover, #btn-settings:hover { color: var(--accent); }
+#btn-settings { font-size: 12px; }
+
+.set-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 2px; gap: 8px;
+}
+.set-label { color: var(--ink-2); flex-shrink: 0; }
+.set-chips { display: flex; gap: 5px; align-items: center; }
+.chip {
+  padding: 2px 9px; border: 1px solid var(--border); border-radius: 10px;
+  cursor: pointer; font-size: 11px; color: var(--ink-2);
+}
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.num-btn {
+  width: 20px; height: 20px; line-height: 18px; text-align: center;
+  border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
+  font-size: 13px; user-select: none;
+}
+.num-btn:hover { border-color: var(--accent); color: var(--accent); }
+.num-val { min-width: 34px; text-align: center; color: var(--ink); }
 #btn-review { font-size: 11px; }
 
 #overlay {
