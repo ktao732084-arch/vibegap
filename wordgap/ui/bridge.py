@@ -240,9 +240,12 @@ class Bridge:
             "dsh": ["dsh", "deepseek"],
             "workbuddy": ["workbuddy"],
         }.get(str(agent), [])
-        hwnd = win32util.find_best_window([leaf], hints)
-        if hwnd is not None and win32util.activate_window(hwnd):
-            return {"ok": True, "via": "window"}
+        match = win32util.find_best_window([leaf], hints)
+        if match is not None:
+            hwnd, title = match
+            logger.info("activate_session %s -> window '%s'", agent, title)
+            if win32util.activate_window(hwnd):
+                return {"ok": True, "via": "window", "title": title}
         target = Path(str(cwd)) if cwd else None
         if target and target.is_dir():
             os.startfile(str(target))  # noqa: S606
