@@ -36,7 +36,7 @@ NEWS_HTTP_TIMEOUT_SEC = 8
 
 # 悬浮窗
 WINDOW_WIDTH = 390
-WINDOW_HEIGHT = 250
+WINDOW_HEIGHT = 272
 WINDOW_TITLE = "WordGap"
 
 DICTS_DIR = Path(__file__).resolve().parent.parent / "dicts"  # 内置词书目录

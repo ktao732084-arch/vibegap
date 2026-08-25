@@ -14,6 +14,12 @@
   function isBrowsing() { return browseOffset !== 0; }
   function isReview() { return review !== null; }
 
+  function escText(s) {
+    const div = document.createElement("div");
+    div.textContent = s == null ? "" : String(s);
+    return div.innerHTML;
+  }
+
   function render() {
     if (!word) return;
     const showAll = isBrowsing() || revealed;
@@ -22,6 +28,8 @@
       const shown = i < typed || showAll ? c : " ";
       return '<span class="' + cls + '">' + shown + "</span>";
     }).join("");
+    const transFull = word.trans.join(";");
+    const transShort = transFull.length > 64 ? transFull.slice(0, 64) + "…" : transFull;
     let hint;
     if (isBrowsing()) {
       hint = "浏览 " + (browseOffset > 0 ? "+" : "") + browseOffset +
@@ -34,7 +42,7 @@
     }
     root.innerHTML =
       '<div class="wc-word" id="wc-word">' + chars + "</div>" +
-      '<div class="wc-trans">' + word.trans.join(";") + "</div>" +
+      '<div class="wc-trans" title="' + escText(transFull) + '">' + escText(transShort) + "</div>" +
       '<div class="wc-phone" id="wc-phone" title="点击发音">' +
       (word.usphone ? "/" + word.usphone + "/" : "") +
       ' <span class="wc-speaker">🔊</span></div>' +
@@ -106,7 +114,7 @@
         if (review.idx >= review.queue.length) {
           const n = review.queue.length;
           review = null;
-          root.innerHTML = '<div class="wc-summary"><div class="big">复习完成 ✓</div>' +
+          root.innerHTML = '<div class="wc-summary"><div class="big">复习完成</div>' +
             '<div class="sub">过了 ' + n + " 个错词</div></div>";
           setTimeout(load, 1600);
         } else {
@@ -180,7 +188,7 @@
       if (!api) return;
       api.get_review().then((queue) => {
         if (!queue.length) {
-          root.innerHTML = '<div class="wc-summary"><div class="big">今日没有错词 🎉</div></div>';
+          root.innerHTML = '<div class="wc-summary"><div class="big">今日没有错词</div></div>';
           setTimeout(load, 1500);
           return;
         }

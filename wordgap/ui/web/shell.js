@@ -30,8 +30,8 @@
       state.softClosing = true;
       const banner = el("banner");
       banner.textContent = info.waiting
-        ? "⏸ " + info.agent + " 在等你确认 — 拼完这个词就过去"
-        : "✅ " + info.agent + " 跑完了 — 拼完这个词收工";
+        ? info.agent + " 等待确认 · 拼完当前词后收起"
+        : info.agent + " 已完成 · 拼完当前词后收起";
       banner.classList.toggle("waiting", !!info.waiting);
       banner.classList.remove("hidden");
     },
