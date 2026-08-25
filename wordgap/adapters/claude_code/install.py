@@ -1,0 +1,127 @@
+"""WordGap 的 Claude Code 钩子安装器(独立脚本,不 import 主包,§7.2)。
+
+用法:
+    python install.py            # 安装到 ~/.claude/settings.json
+    python install.py --uninstall
+    python install.py --settings <path>   # 指定 settings 文件(测试/WorkBuddy 复用)
+    python install.py --agent dsh         # 上报的 agent 名(dsh hook bridge 复用)
+
+三原则(spec §7.8):merge 不覆盖、写前备份、可干净卸载。
+识别标记:command 中含 "wordgap" 的钩子条目视为本工具写入。
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import sys
+from datetime import datetime
+from pathlib import Path
+
+MARKER = "wordgap"
+HOOK_EVENTS = {
+    "UserPromptSubmit": "running",
+    "Stop": "done",
+    "Notification": "attention",
+}
+
+
+def build_command(event: str, agent: str) -> str:
+    """生成钩子命令行(绝对路径指向本目录的 notify.ps1)。"""
+    script = Path(__file__).resolve().parent / "notify.ps1"
+    return (
+        f'powershell -NoProfile -ExecutionPolicy Bypass -File "{script}" '
+        f"-Event {event} -Agent {agent}"
+    )
+
+
+def load_settings(path: Path) -> dict:
+    """读 settings.json;不存在返回空对象,损坏则报错退出(绝不覆盖坏文件)。"""
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        sys.exit(f"ERROR: {path} is not valid JSON ({exc}); fix it manually first.")
+
+
+def backup(path: Path) -> Path | None:
+    """写前备份,返回备份路径。"""
+    if not path.exists():
+        return None
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = path.with_name(f"{path.name}.bak.{stamp}")
+    shutil.copy2(path, target)
+    return target
+
+
+def _is_ours(hook_entry: dict) -> bool:
+    return MARKER in str(hook_entry.get("command", "")).lower()
+
+
+def _strip_ours(matchers: list) -> list:
+    """从某事件的 matcher 列表中移除本工具的钩子,保留用户自己的。"""
+    kept_matchers = []
+    for matcher in matchers:
+        hooks = [h for h in matcher.get("hooks", []) if not _is_ours(h)]
+        if hooks or any(k for k in matcher if k != "hooks"):
+            kept_matchers.append({**matcher, "hooks": hooks} if hooks else matcher)
+    return [m for m in kept_matchers if m.get("hooks")]
+
+
+def apply_install(settings: dict, agent: str) -> dict:
+    """返回合入 wordgap 钩子后的新 settings(不修改入参)。"""
+    result = json.loads(json.dumps(settings))  # deep copy
+    hooks = result.setdefault("hooks", {})
+    for hook_name, event in HOOK_EVENTS.items():
+        matchers = _strip_ours(hooks.get(hook_name, []))
+        matchers.append(
+            {"hooks": [{"type": "command", "command": build_command(event, agent)}]}
+        )
+        hooks[hook_name] = matchers
+    return result
+
+
+def apply_uninstall(settings: dict) -> dict:
+    """返回移除 wordgap 钩子后的新 settings。"""
+    result = json.loads(json.dumps(settings))
+    hooks = result.get("hooks", {})
+    for hook_name in list(hooks):
+        hooks[hook_name] = _strip_ours(hooks[hook_name])
+        if not hooks[hook_name]:
+            del hooks[hook_name]
+    if "hooks" in result and not result["hooks"]:
+        del result["hooks"]
+    return result
+
+
+def save_settings(path: Path, settings: dict) -> None:
+    """UTF-8 写回,保留中文可读。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(settings, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Install WordGap hooks for Claude Code")
+    parser.add_argument("--settings", type=Path, default=Path.home() / ".claude" / "settings.json")
+    parser.add_argument("--agent", default="claude-code")
+    parser.add_argument("--uninstall", action="store_true")
+    args = parser.parse_args()
+
+    settings = load_settings(args.settings)
+    updated = apply_uninstall(settings) if args.uninstall else apply_install(settings, args.agent)
+    if updated == settings:
+        print("No changes needed.")
+        return
+    backup_path = backup(args.settings)
+    save_settings(args.settings, updated)
+    action = "Uninstalled from" if args.uninstall else "Installed to"
+    print(f"{action} {args.settings}")
+    if backup_path:
+        print(f"Backup: {backup_path}")
+
+
+if __name__ == "__main__":
+    main()
