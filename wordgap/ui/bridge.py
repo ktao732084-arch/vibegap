@@ -252,6 +252,13 @@ class Bridge:
             logger.info("activate_session %s -> window '%s'", agent, title)
             if win32util.activate_window(hwnd):
                 return {"ok": True, "via": "window", "title": title}
+        if str(agent) == "claude-code":
+            # 与"通知点击跳转"同通道:claude:// 协议激活桌面端(实测可置顶)
+            try:
+                os.startfile("claude://")  # noqa: S606
+                return {"ok": True, "via": "protocol"}
+            except OSError as exc:
+                logger.warning("claude:// activation failed: %s", exc)
         target = Path(str(cwd)) if cwd else None
         if target and target.is_dir():
             os.startfile(str(target))  # noqa: S606

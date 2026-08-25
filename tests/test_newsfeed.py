@@ -67,6 +67,24 @@ def test_refresh_respects_interval():
     assert len(calls) == 2
 
 
+def test_pool_accumulates_and_dedupes_across_refreshes():
+    clock = FakeClock()
+    batches = [
+        [NewsItem("a", "u-a", "s", "", ""), NewsItem("b", "u-b", "s", "", "")],
+        [NewsItem("b", "u-b", "s", "", ""), NewsItem("c", "u-c", "s", "", "")],
+    ]
+    feed = NewsFeed(
+        fetcher=lambda: batches.pop(0),
+        clock=clock,
+        refresh_interval=timedelta(minutes=30),
+    )
+    feed.maybe_refresh(blocking=True)
+    clock.now += timedelta(minutes=31)
+    feed.maybe_refresh(blocking=True)
+    titles = [n.title for n in feed.items()]
+    assert titles == ["b", "c", "a"]  # 新条目在前,旧条目保留,b 不重复
+
+
 def test_fetch_failure_keeps_old_cache():
     clock = FakeClock()
     state = {"fail": False}

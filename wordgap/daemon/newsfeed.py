@@ -15,6 +15,7 @@ from typing import Callable
 from wordgap.config import (
     NEWS_API_URL,
     NEWS_HTTP_TIMEOUT_SEC,
+    NEWS_POOL_MAX,
     NEWS_REFRESH_MIN,
     NEWS_USER_AGENT,
 )
@@ -109,10 +110,29 @@ class NewsFeed:
         try:
             fetched = tuple(self._fetcher())
             with self._lock:
-                self._items = fetched
-            logger.info("newsfeed refreshed: %d items", len(fetched))
+                self._items = _merge_dedup(fetched, self._items)
+            logger.info(
+                "newsfeed refreshed: %d fetched, pool %d", len(fetched), len(self._items)
+            )
         except Exception as exc:  # noqa: BLE001 - 新闻是附属功能,任何失败都只降级
             logger.warning("newsfeed refresh failed (keeping old cache): %s", exc)
         finally:
             with self._lock:
                 self._refreshing = False
+
+
+def _merge_dedup(
+    new_items: tuple[NewsItem, ...], old_items: tuple[NewsItem, ...]
+) -> tuple[NewsItem, ...]:
+    """新条目排前、按 url/标题去重、累积成本地池(上限 NEWS_POOL_MAX)。"""
+    seen: set[str] = set()
+    merged: list[NewsItem] = []
+    for item in list(new_items) + list(old_items):
+        key = item.url or item.title
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+        if len(merged) >= NEWS_POOL_MAX:
+            break
+    return tuple(merged)
