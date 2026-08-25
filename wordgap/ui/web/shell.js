@@ -4,11 +4,13 @@
 
   const panels = [];
   const state = { sessionWords: 0, softClosing: false };
+  const prefs = { auto_pronounce: true };
   const el = (id) => document.getElementById(id);
 
   const shell = {
     register(panel) { panels.push(panel); },
     state,
+    prefs,
     api() { return window.pywebview && window.pywebview.api; },
 
     /* --- Python 侧回调 --- */
@@ -165,6 +167,24 @@
       shell.isOverlayOpen() ? shell.closeOverlay() : shell.showBooks();
     });
     el("btn-review").addEventListener("click", () => shell.startReview());
+    const soundBtn = el("btn-sound");
+    const renderSound = () => {
+      soundBtn.textContent = prefs.auto_pronounce ? "🔊" : "🔇";
+      soundBtn.title = prefs.auto_pronounce ? "自动发音:开" : "自动发音:关(点音标仍可发音)";
+    };
+    soundBtn.addEventListener("click", () => {
+      prefs.auto_pronounce = !prefs.auto_pronounce;
+      renderSound();
+      const api = shell.api();
+      if (api) api.set_pref("auto_pronounce", prefs.auto_pronounce);
+    });
+    const apiNow = shell.api();
+    if (apiNow && apiNow.get_prefs) {
+      apiNow.get_prefs().then((p) => {
+        prefs.auto_pronounce = !!p.auto_pronounce;
+        renderSound();
+      }).catch(renderSound);
+    } else { renderSound(); }
     panels.forEach((p) => p.mount && p.mount());
     shell.updateStatus();
     shell.updateAgents();

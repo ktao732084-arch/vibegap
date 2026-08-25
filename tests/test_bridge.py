@@ -135,6 +135,14 @@ def test_get_state_session_counts_and_cwd(env):
     assert by_id["b"]["running"] is False
 
 
+def test_prefs_roundtrip(env):
+    bridge, _, _ = env
+    assert bridge.get_prefs() == {"auto_pronounce": True}  # 默认开
+    assert bridge.set_pref("auto_pronounce", False) == {"ok": True}
+    assert bridge.get_prefs() == {"auto_pronounce": False}
+    assert bridge.set_pref("evil_key", True) == {"error": "bad_key"}
+
+
 def test_open_path_rejects_non_dir(env):
     bridge, _, _ = env
     assert bridge.open_path("Z:/definitely/not/a/dir") == {"error": "not_a_dir"}

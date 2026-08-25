@@ -69,7 +69,7 @@
   function setWord(w) {
     word = w; typed = 0; typos = 0; revealed = false; peeked = false;
     render();
-    pronounce();
+    if (window.shell.prefs.auto_pronounce) pronounce();
   }
 
   function load() {

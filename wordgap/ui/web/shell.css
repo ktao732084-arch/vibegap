@@ -34,8 +34,9 @@ body {
   cursor: pointer; padding: 1px 6px; border-radius: 4px; font-size: 12px;
 }
 #btn-close:hover { background: rgba(216,106,82,0.25); color: var(--bad); }
-#status-text, #status-agents, #btn-review { cursor: pointer; }
-#status-text:hover, #status-agents:hover, #btn-review:hover { color: var(--accent); }
+#status-text, #status-agents, #btn-review, #btn-sound { cursor: pointer; }
+#status-text:hover, #status-agents:hover, #btn-review:hover, #btn-sound:hover { color: var(--accent); }
+#btn-sound { font-size: 11px; }
 #btn-review { font-size: 11px; }
 
 #overlay {
