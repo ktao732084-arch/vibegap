@@ -24,6 +24,12 @@ _THEMES = ("auto", "light", "dark")
 # 设置面板可改的 config.json 项:key -> (最小值, 最大值)
 _SETTING_LIMITS = {"popup_delay_sec": (5, 120), "daily_goal": (1, 1000)}
 
+# 各 agent 的"恢复会话"命令模板(官方 CLI 机制)
+_RESUME_COMMANDS = {
+    "claude-code": "claude --resume {sid}",
+    "codex": "codex resume {sid}",
+}
+
 logger = logging.getLogger(__name__)
 
 
@@ -251,6 +257,28 @@ class Bridge:
             os.startfile(str(target))  # noqa: S606
             return {"ok": True, "via": "folder"}
         return {"error": "not_found"}
+
+    def resume_session(self, agent: str, session_id: str, cwd: str = "") -> dict:
+        """在新终端里用官方 CLI 恢复该对话(claude --resume / codex resume)。"""
+        import re
+        import subprocess
+
+        if not re.fullmatch(r"[A-Za-z0-9_-]{4,64}", str(session_id or "")):
+            return {"error": "bad_session_id"}
+        template = _RESUME_COMMANDS.get(str(agent))
+        if template is None:
+            return {"error": "unsupported_agent"}
+        workdir = str(cwd) if cwd and Path(str(cwd)).is_dir() else None
+        try:
+            subprocess.Popen(  # noqa: S603 - 命令模板固定,sid 已白名单校验
+                ["cmd.exe", "/k", template.format(sid=session_id)],
+                cwd=workdir,
+                creationflags=subprocess.CREATE_NEW_CONSOLE,
+            )
+        except OSError as exc:
+            logger.error("resume_session failed: %s", exc)
+            return {"error": "launch_failed"}
+        return {"ok": True}
 
     def open_path(self, path: str) -> dict:
         """打开某会话的项目目录(会话面板点击路径)。仅接受真实存在的目录。"""

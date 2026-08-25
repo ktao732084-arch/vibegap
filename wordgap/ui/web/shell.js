@@ -107,32 +107,45 @@
       (shell._sessions || []).forEach((s) => {
         (groups[s.agent] = groups[s.agent] || []).push(s);
       });
+      const canResume = { "claude-code": 1, "codex": 1 };
       const blocks = Object.keys(groups).map((agent) => {
         const rows = groups[agent].map((s) => {
           const dot = '<span class="dot ' + (s.running ? "busy" : "idle") + '"></span>';
           const when = (s.last_event_at || "").slice(11, 16);
           const cwd = s.cwd || "";
-          return '<div class="ov-row" data-cwd="' + esc(cwd) + '">' + dot +
+          const action = s.running
+            ? '<span class="ov-sub">运行中</span>'
+            : canResume[s.agent]
+              ? '<span class="ov-act" title="在新终端中恢复此对话">恢复</span>'
+              : '<span class="ov-sub">已完成</span>';
+          return '<div class="ov-row">' + dot +
             '<span class="ov-main"><span class="ov-sub">' +
             esc(s.session_id.slice(0, 8)) + " · " + when +
-            (cwd ? " · " + esc(shortPath(cwd)) : "") + "</span></span>" +
-            '<span class="ov-sub">' + (s.running ? "运行中" : "已完成") + "</span></div>";
+            (cwd ? " · " + esc(shortPath(cwd)) : "") + "</span></span>" + action + "</div>";
         });
         return "<h4>" + esc(agent) + "</h4>" + rows.join("");
       });
       openOverlay('<h4>会话(点击跳转到对应窗口)</h4>' +
         (blocks.length ? blocks.join("") : '<div class="ov-sub">还没有会话</div>'), "sessions");
+      const flat = [];
+      Object.keys(groups).forEach((agent) => {
+        groups[agent].forEach((s) => flat.push(s));
+      });
       el("overlay").querySelectorAll(".ov-row").forEach((row, i) => {
+        const sess = flat[i];
+        if (!sess) return;
         row.addEventListener("click", () => {
           const api = shell.api();
-          if (!api) return;
-          const flat = [];
-          Object.keys(groups).forEach((agent) => {
-            groups[agent].forEach((s) => flat.push(s));
-          });
-          const sess = flat[i];
-          if (sess) api.activate_session(sess.agent, sess.cwd || "");
+          if (api) api.activate_session(sess.agent, sess.cwd || "");
         });
+        const act = row.querySelector(".ov-act");
+        if (act) {
+          act.addEventListener("click", (e) => {
+            e.stopPropagation();  // 恢复对话,不触发整行的置顶跳转
+            const api = shell.api();
+            if (api) api.resume_session(sess.agent, sess.session_id, sess.cwd || "");
+          });
+        }
       });
     },
     showBooks() {
