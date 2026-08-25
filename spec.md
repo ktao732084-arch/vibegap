@@ -16,6 +16,11 @@
 3. **多 agent 适配**:MVP 支持 Claude Code + Codex CLI;架构上加一个 agent 只需新增一个 adapter,不改核心。
 4. **顺序 / 乱序两种模式**:乱序采用固定种子洗牌,同样可断点续背。
 5. **词书**:兼容 qwerty-learner 开源词库 JSON 格式,导入即用。
+6. **小窗框架(Shell + Panels)**:悬浮窗本体是一个可插拔面板容器——背单词只是第一个主面板。
+   产品叙事:"vibe coding 不切屏,等待间隙在小窗里背单词/看 AI 新闻/收消息"。
+   MVP 附带第二个面板:角落新闻轮播条(卡兹克 AIHOT 公开 API)。
+   (Codex TUI 的"小屏展示"走的是终端图形协议 Kitty/Sixel 内嵌图片,与我们的桌面悬浮窗
+   不同技术路线且能力更弱;借它的 UX 理念,不借实现。)
 
 ### 1.2 非目标(明确不做,防止范围蔓延)
 
@@ -85,9 +90,11 @@ wordgap/
 │   ├── config.py            # 全部常量与用户配置(唯一允许出现"魔法数字"的文件)
 │   ├── daemon/
 │   │   ├── app.py           # FastAPI 路由(仅路由,不含业务逻辑,<150 行)
+│   │   ├── runtime.py       # 运行时外壳(唯一可变状态容器,效果分发)
 │   │   ├── sessions.py      # 会话状态机(纯函数核心)
-│   │   ├── scheduler.py     # UI 调度状态机 + 定时器(纯函数核心 + 薄 IO 壳)
-│   │   └── events.py        # 事件数据类(pydantic 模型)
+│   │   ├── scheduler.py     # UI 调度状态机(纯函数核心)
+│   │   ├── newsfeed.py      # AIHOT 新闻拉取 + 缓存(M2,失败降级隐藏轮播条)
+│   │   └── events.py        # 事件数据类
 │   ├── store/
 │   │   ├── db.py            # 连接管理、建表、迁移
 │   │   ├── wordbooks.py     # 词书导入/查询
@@ -97,9 +104,12 @@ wordgap/
 │   │   ├── window.py        # pywebview 窗口管理(置顶、不抢焦点、显示/隐藏)
 │   │   ├── bridge.py        # JS↔Python 桥(暴露给前端的 API)
 │   │   └── web/
-│   │       ├── index.html
-│   │       ├── card.js      # 单词卡逻辑(打字判定、软关闭横幅)
-│   │       └── card.css
+│   │       ├── index.html   # Shell:状态栏/横幅 + main/strip 两个面板槽
+│   │       ├── shell.js     # 面板挂载、焦点、横幅(小窗框架本体)
+│   │       ├── shell.css
+│   │       └── panels/
+│   │           ├── word_card.js    # 主面板:打字背单词
+│   │           └── news_ticker.js  # 条带面板:AIHOT 新闻轮播
 │   └── adapters/            # 安装脚本 + 钩子脚本(不是 Python 包)
 │       ├── claude_code/
 │       │   ├── install.py   # 把 hooks 写入 ~/.claude/settings.json(merge,不覆盖)
@@ -331,7 +341,28 @@ CREATE TABLE kv (
 
 ---
 
-## 6. UI 设计(悬浮窗单词卡)
+## 6. UI 设计(小窗框架:Shell + Panels)
+
+窗口分两个固定区域,内容以"面板"为单位插拔:
+
+```
+┌────────────────────────────────┐
+│ 状态栏:355/3674 · CET-6 · 乱序 │  ← Shell 自有(软关闭时变横幅)
+│ ┌────────────────────────────┐ │
+│ │  主面板区(main)            │ │  ← MVP:单词卡;未来:消息流/视频等
+│ └────────────────────────────┘ │
+│ ▸ AI快讯:OpenAI 发布……(轮播) │  ← 条带区(strip):新闻轮播条
+└────────────────────────────────┘
+```
+
+**面板契约(刻意最小,防过度设计)**:每个面板是一个 JS 模块,导出
+`{ id, region: 'main'|'strip', mount(el, bridge), unmount() }`;Shell 负责窗口生命周期、
+焦点、横幅,面板只管自己区域的内容。M2 实现两个面板(word-card、news-ticker),
+框架能力以"够这两个用"为准,不做注册中心/热加载等投机功能(YAGNI)。
+
+**数据出口统一走 daemon**:面板不直接访问外网。新闻数据由 daemon 的 `newsfeed.py`
+定时拉取 AIHOT 公开 API(`GET aihot.virxact.com/api/public/*`,免 key)并缓存,
+UI 经 bridge 读缓存。拉取失败时轮播条整体隐藏,绝不影响背单词主功能(优雅降级)。
 
 ### 6.1 窗口行为
 
@@ -479,7 +510,7 @@ TDD 流程:每个模块先写用例(RED)再实现(GREEN),见全局 testing 规�
 |--------|------|---------|------|
 | **M0 内核** | store 全部 + sessions/scheduler 纯函数 + 全部单测 | pytest 全绿,覆盖 ≥80%,无 UI 无网络 | 1 天 |
 | **M1 走通** | daemon(FastAPI)+ Claude Code adapter;UI 暂用 Windows toast 通知代替 | 真机:提问 18s 后弹 toast,Stop 后弹"跑完"toast,断点数字正确 | 1 天 |
-| **M2 单词卡** | pywebview 悬浮窗 + 打字模式 + 软关闭 + 断点续背全流程 | 真机连续使用一下午无闪弹、无焦点抢夺、进度不丢 | 1~2 天 |
+| **M2 小窗** | pywebview 悬浮窗 Shell + 单词卡面板(打字模式)+ 软关闭 + 断点续背全流程 + 新闻轮播条(AIHOT) | 真机连续使用一下午无闪弹、无焦点抢夺、进度不丢;断网时轮播条隐藏而背词不受影响 | 1.5~2.5 天 |
 | **M3 Codex** | codex notify + log_watcher | 两个 agent 同开,任一结束都正确软关闭 | 0.5~1 天 |
 | **M4 扩展** | pi extension + dsh(hook bridge 路线)+ WorkBuddy + 统计页(今日/累计) | — | 1~1.5 天 |
 | M5(可选) | FSRS 间隔重复、认读模式、打包 exe | — | 另行评估 |
@@ -495,3 +526,7 @@ TDD 流程:每个模块先写用例(RED)再实现(GREEN),见全局 testing 规�
     session_id 字段是否一致 —— M4 开工时实机验证;不行则走原生插件路线(§5.4 路线 B)。
 4. 词书选哪本作为默认内置?(建议先放 CET-6 + GRE 两本,用户可另导入。)
 5. 全局热键库选型(`keyboard` 库需管理员权限的问题)—— M2 时验证,不行就只留托盘图标唤起。
+6. AIHOT 公开 API 的具体端点与返回字段(aihot.virxact.com/api/public/*,免 key)——
+   M2 实现 newsfeed.py 时实际请求一次确认;注意礼貌拉取(≥30 分钟间隔,带 UA,尊重其条款)。
+7. 未来面板 roadmap(不排期,仅记录方向):消息通知流面板、视频小窗面板(pywebview 可承载
+   HTML5 video,技术上可行;焦点/快捷键与打字面板的冲突届时设计)。
