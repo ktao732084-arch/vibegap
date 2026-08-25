@@ -27,6 +27,10 @@ body.theme-dark {
   --slot-dim: rgba(232,235,242,0.18);
 }
 html, body { height: 100%; overflow: hidden; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-2); }
 body {
   background: var(--bg); color: var(--ink);
   font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
