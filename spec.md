@@ -231,7 +231,8 @@ CREATE TABLE kv (
 
 1. 收到 `running` → 该会话置 RUNNING。
 2. 收到 `done`/`attention` → 该会话置 IDLE,并向调度器发一条 `AgentFinished(agent, kind)` 通知。
-3. **过期清理**:RUNNING 超过 `SESSION_TTL`(默认 30 分钟)未再收到事件 → 视为孤儿会话,静默清理(agent 崩溃/被 kill 的兜底)。
+3. **过期清理**:任何会话(含 IDLE)超过 `SESSION_TTL`(默认 30 分钟)未再收到事件 → 静默清理。
+   对 RUNNING 会话这是 agent 崩溃/被 kill 的兜底;对 IDLE 会话这是防止会话表无限增长的整体回收。
 4. 派生量 `any_running: bool` 供调度器使用。
 
 实现约束:状态机核心为**纯函数** `reduce(state, event) -> (new_state, effects)`,不做 IO;
@@ -261,6 +262,10 @@ CREATE TABLE kv (
    (理由:任何一个跑完你都要切走看结果)。若用户没理会横幅继续背、且仍有会话 RUNNING,则保持 SHOWING。
 4. **手动逃生**:`Esc` 立即隐藏窗口(当前词按 skip 记录);全局热键(默认 `Ctrl+Alt+W`)手动唤起/隐藏,
    与 agent 状态无关(想主动背也行)。
+5. **ARMED 期间的 AgentFinished 一律静默丢弃**(有意行为,非遗漏):延迟期内窗口从未显示,
+   用户仍在终端前,agent 自己的完成输出即是提醒;之后窗口若因其他会话弹出,不补报横幅。
+   防闪弹的"零打扰"优先级高于完成提醒的完整性。规则 3 的"一律触发软关闭"仅适用于窗口可见时
+   (SHOWING / SOFT_CLOSING)。
 
 同 §4.2:核心为纯函数 reducer,定时器作为注入的 effect 执行。
 

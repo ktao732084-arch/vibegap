@@ -15,6 +15,16 @@ SUMMARY_LINGER_SEC = 2     # 软关闭小结停留时长
 SESSION_TTL_MIN = 30       # 孤儿会话清理阈值
 ADAPTER_TIMEOUT_SEC = 1    # 钩子上报 HTTP 超时
 LOG_RETENTION_DAYS = 7
+SEED_RANGE = 2**31         # 洗牌种子取值上界(同一常量保证 seeded_order 的确定性)
+
+MODE_SEQUENTIAL = "sequential"
+MODE_SHUFFLED = "shuffled"
+VALID_MODES = (MODE_SEQUENTIAL, MODE_SHUFFLED)
+
+RESULT_PASS = "pass"
+RESULT_FAIL = "fail"
+RESULT_SKIP = "skip"
+VALID_RESULTS = (RESULT_PASS, RESULT_FAIL, RESULT_SKIP)
 
 DATA_DIR = Path.home() / ".wordgap"
 DB_PATH = DATA_DIR / "wordgap.db"

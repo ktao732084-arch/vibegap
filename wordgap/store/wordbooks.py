@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from wordgap.config import MODE_SHUFFLED, SEED_RANGE, VALID_MODES
 from wordgap.store.db import kv_get, kv_set
 
 _CURRENT_KEY = "current_wordbook"
-_SEED_RANGE = 2**31
 
 
 class WordbookError(ValueError):
@@ -41,7 +41,7 @@ def import_wordbook(
     now: datetime | None = None,
 ) -> Wordbook:
     """导入词书并建进度行。任何词条非法则整体失败,不入库。"""
-    if mode not in ("sequential", "shuffled"):
+    if mode not in VALID_MODES:
         raise WordbookError(f"unknown mode: {mode}")
     words = _validate_words(words_raw)
     created_at = (now or datetime.now()).isoformat(timespec="seconds")
@@ -130,6 +130,6 @@ def _to_word(item: dict) -> Word:
 
 
 def _resolve_seed(mode: str, seed: int | None) -> int | None:
-    if mode != "shuffled":
+    if mode != MODE_SHUFFLED:
         return None
-    return seed if seed is not None else random.randrange(_SEED_RANGE)
+    return seed if seed is not None else random.randrange(SEED_RANGE)

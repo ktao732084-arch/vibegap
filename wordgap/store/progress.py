@@ -6,10 +6,14 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 
+from wordgap.config import (
+    MODE_SEQUENTIAL,
+    MODE_SHUFFLED,
+    SEED_RANGE,
+    VALID_MODES,
+    VALID_RESULTS,
+)
 from wordgap.store.wordbooks import Word, WordbookError, get_words
-
-_SEED_RANGE = 2**31
-_VALID_RESULTS = ("pass", "fail", "skip")
 
 
 @dataclass(frozen=True)
@@ -61,7 +65,7 @@ def commit_word(
 
     背完一轮时游标归零并换新 seed(next_seed 供测试注入)。
     """
-    if result not in _VALID_RESULTS:
+    if result not in VALID_RESULTS:
         raise WordbookError(f"invalid result: {result}")
     row = _get_progress_row(conn, wordbook_id)
     words = get_words(conn, wordbook_id)
@@ -74,8 +78,8 @@ def commit_word(
     new_seed = row["shuffle_seed"]
     if is_round_completed:
         new_cursor = 0
-        if row["mode"] == "shuffled":
-            new_seed = next_seed if next_seed is not None else random.randrange(_SEED_RANGE)
+        if row["mode"] == MODE_SHUFFLED:
+            new_seed = next_seed if next_seed is not None else random.randrange(SEED_RANGE)
 
     with conn:
         conn.execute(
@@ -120,12 +124,12 @@ def set_mode(
     now: datetime | None = None,
 ) -> None:
     """切换顺序/乱序。切换会重置游标并换 seed(顺序语义已变,旧游标无意义)。"""
-    if mode not in ("sequential", "shuffled"):
+    if mode not in VALID_MODES:
         raise WordbookError(f"unknown mode: {mode}")
     _get_progress_row(conn, wordbook_id)
     new_seed = None
-    if mode == "shuffled":
-        new_seed = seed if seed is not None else random.randrange(_SEED_RANGE)
+    if mode == MODE_SHUFFLED:
+        new_seed = seed if seed is not None else random.randrange(SEED_RANGE)
     ts = (now or datetime.now()).isoformat(timespec="seconds")
     with conn:
         conn.execute(
@@ -148,6 +152,6 @@ def _get_progress_row(conn: sqlite3.Connection, wordbook_id: int) -> sqlite3.Row
 def _word_index_at(row: sqlite3.Row, total: int, cursor: int) -> int:
     if cursor >= total:
         raise WordbookError(f"cursor {cursor} out of range (total {total})")
-    if row["mode"] == "sequential":
+    if row["mode"] == MODE_SEQUENTIAL:
         return cursor
     return seeded_order(total, row["shuffle_seed"])[cursor]

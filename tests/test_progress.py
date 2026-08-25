@@ -126,3 +126,19 @@ def test_set_mode_resets_cursor(conn):
 def test_progress_missing_rejected(conn):
     with pytest.raises(WordbookError):
         get_next_word(conn, 999)
+
+
+def test_set_mode_invalid_rejected(conn):
+    book = _book(conn, "sequential")
+    with pytest.raises(WordbookError):
+        set_mode(conn, book.id, "bogus")
+
+
+def test_corrupted_cursor_out_of_range_rejected(conn):
+    book = _book(conn, "sequential")
+    with conn:
+        conn.execute(
+            "UPDATE progress SET cursor = 99 WHERE wordbook_id = ?", (book.id,)
+        )
+    with pytest.raises(WordbookError):
+        get_next_word(conn, book.id)

@@ -6,6 +6,7 @@ from pathlib import Path
 
 SCHEMA_VERSION = 1
 
+# 注意:下方 CHECK 约束中的枚举字面量必须与 config.VALID_MODES / VALID_RESULTS 保持一致
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS wordbook (
     id          INTEGER PRIMARY KEY,
@@ -68,12 +69,12 @@ def kv_get(conn: sqlite3.Connection, key: str) -> str | None:
 
 def kv_set(conn: sqlite3.Connection, key: str, value: str) -> None:
     """写全局键值(upsert)。"""
-    conn.execute(
-        "INSERT INTO kv (key, value) VALUES (?, ?) "
-        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        (key, value),
-    )
-    conn.commit()
+    with conn:
+        conn.execute(
+            "INSERT INTO kv (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
 
 
 def _init_schema(conn: sqlite3.Connection) -> None:

@@ -65,6 +65,7 @@ def test_sequential_mode_has_no_seed(conn):
         [{"name": "abandon"}],                     # 缺 trans
         [{"name": "abandon", "trans": []}],        # 空 trans
         [{"name": "abandon", "trans": "放弃"}],     # trans 不是列表
+        [{"name": "a", "trans": ["x"]}, 42],       # 词条不是对象
     ],
 )
 def test_malformed_wordbook_rejected_and_nothing_inserted(conn, bad):
@@ -110,3 +111,8 @@ def test_current_wordbook_roundtrip(conn):
 def test_set_current_unknown_id_rejected(conn):
     with pytest.raises(WordbookError):
         set_current(conn, 999)
+
+
+def test_get_words_unknown_id_rejected(conn):
+    with pytest.raises(WordbookError):
+        get_words(conn, 999)

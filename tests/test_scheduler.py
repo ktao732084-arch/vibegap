@@ -70,8 +70,37 @@ def test_finished_while_armed_and_nothing_running_cancels():
 
 
 def test_finished_while_armed_but_others_running_keeps_armed():
-    state, _ = on_agent_finished(_armed(), FINISHED, True)
+    state, effects = on_agent_finished(_armed(), FINISHED, True)
     assert state.phase is Phase.ARMED
+    assert effects == []
+
+
+def test_finished_during_armed_is_intentionally_dropped():
+    # spec §4.3 规则 5:延迟期内 A 完成、B 仍在跑,之后窗口因 B 弹出时不补报 A 的横幅
+    state, _ = on_agent_finished(_armed(), FINISHED, True)
+    state, effects = on_tick(state, T0 + DELAY, True, DELAY)
+    assert state.phase is Phase.SHOWING
+    assert state.banner is None
+    assert effects == [ShowWindow()]
+
+
+def test_running_changed_is_noop_while_showing():
+    state, effects = on_running_changed(_showing(), True, T0)
+    assert state.phase is Phase.SHOWING
+    assert effects == []
+    state, effects = on_running_changed(_showing(), False, T0)
+    assert state.phase is Phase.SHOWING  # SHOWING 只因 finished/Esc/热键退出
+    assert effects == []
+
+
+def test_agent_finished_is_noop_while_hidden_or_summary():
+    state, effects = on_agent_finished(INITIAL_SCHEDULER, FINISHED, False)
+    assert state.phase is Phase.HIDDEN
+    assert effects == []
+    summary_state, _ = on_word_committed(_soft_closing(), False, T0, LINGER)
+    state, effects = on_agent_finished(summary_state, FINISHED, False)
+    assert state.phase is Phase.SUMMARY
+    assert effects == []
 
 
 def test_finished_while_showing_soft_closes_with_banner():
