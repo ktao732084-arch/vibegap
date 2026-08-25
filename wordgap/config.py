@@ -28,6 +28,19 @@ RESULT_FAIL = "fail"
 RESULT_SKIP = "skip"
 VALID_RESULTS = (RESULT_PASS, RESULT_FAIL, RESULT_SKIP)
 
+# 新闻轮播(AIHOT,公开只读 API,要求可识别的非浏览器 UA;/api/public 2026 年底迁移 /api/v1)
+NEWS_API_URL = "https://aihot.virxact.com/api/public/items?mode=selected&take=15"
+NEWS_USER_AGENT = "WordGap/0.1 (vocab-mini-window; non-browser)"
+NEWS_REFRESH_MIN = 30      # 拉取间隔,礼貌轮询
+NEWS_HTTP_TIMEOUT_SEC = 8
+
+# 悬浮窗
+WINDOW_WIDTH = 390
+WINDOW_HEIGHT = 250
+WINDOW_TITLE = "WordGap"
+
+DICTS_DIR = Path(__file__).resolve().parent.parent / "dicts"  # 内置词书目录
+
 DATA_DIR = Path.home() / ".wordgap"
 DB_PATH = DATA_DIR / "wordgap.db"
 LOG_DIR = DATA_DIR / "logs"
