@@ -205,7 +205,7 @@ CREATE TABLE kv (
 
 ```json
 {
-  "agent":      "claude-code",         // 枚举:claude-code | codex | pi | workbuddy
+  "agent":      "claude-code",         // 枚举:claude-code | codex | pi | workbuddy | dsh
   "session_id": "任意稳定字符串",       // 同一次 agent 会话内保持一致即可
   "event":      "running",             // running | done | attention
   "ts":         "2026-08-25T14:30:00"  // 可选,缺省用服务端时间
@@ -304,7 +304,20 @@ CREATE TABLE kv (
 机制:官方 extension。`wordgap.ts` 注册 `pi.on('turn_start')` → `running`,
 `pi.on('agent_end')` → `done`,fetch POST 到 daemon,1s 超时。安装 = 复制到 pi 的 extensions 目录。
 
-### 5.4 WorkBuddy(M4)
+### 5.4 dsh / DeepSeek Harness(M4)
+
+机制:两条路线,优先路线 A。
+
+- **路线 A(零成本)**:dsh 官方提供 Claude Code / Codex 的 **hook bridge**,可直接运行已有的
+  hooks.json——即我们为 Claude Code 写的钩子在 dsh 下原样生效,仅 `agent` 字段上报为 `dsh`
+  (钩子脚本加 `-Agent dsh` 参数区分)。
+- **路线 B(原生插件)**:dsh 是微内核架构(基于 Cordis),万物皆插件,生命周期事件有
+  pre-step / turn-end 等;若 bridge 覆盖不全,写一个原生 dsh 插件监听 turn 开始/结束 → HTTP POST。
+- 生态调研结论(2026-08):dsh 插件生态(awesome-deepseek-harness / dsh-plugin topic)中
+  **没有**背单词/flashcard 类插件,通知类只有 dsh-auto-continue、dsh-web-attention-badge 等;
+  WordGap 若发原生插件属生态空白。
+
+### 5.5 WorkBuddy(M4)
 
 机制:WorkBuddy 提供 Claude Code 兼容的 command hooks(`~/.workbuddy-ai/settings.json`)。
 `install.py` 复用 claude_code 的钩子脚本与 merge 逻辑,仅目标路径不同。
@@ -463,7 +476,7 @@ TDD 流程:每个模块先写用例(RED)再实现(GREEN),见全局 testing 规�
 | **M1 走通** | daemon(FastAPI)+ Claude Code adapter;UI 暂用 Windows toast 通知代替 | 真机:提问 18s 后弹 toast,Stop 后弹"跑完"toast,断点数字正确 | 1 天 |
 | **M2 单词卡** | pywebview 悬浮窗 + 打字模式 + 软关闭 + 断点续背全流程 | 真机连续使用一下午无闪弹、无焦点抢夺、进度不丢 | 1~2 天 |
 | **M3 Codex** | codex notify + log_watcher | 两个 agent 同开,任一结束都正确软关闭 | 0.5~1 天 |
-| **M4 扩展** | pi extension + WorkBuddy + 统计页(今日/累计) | — | 1 天 |
+| **M4 扩展** | pi extension + dsh(hook bridge 路线)+ WorkBuddy + 统计页(今日/累计) | — | 1~1.5 天 |
 | M5(可选) | FSRS 间隔重复、认读模式、打包 exe | — | 另行评估 |
 
 **M2 结束后先真实使用 3~5 天再决定是否继续 M3+**(验证"我真的会在等待时背单词"这个前提)。
@@ -473,5 +486,7 @@ TDD 流程:每个模块先写用例(RED)再实现(GREEN),见全局 testing 规�
 1. pywebview 在 Windows 11 上能否做到真正的"显示但不抢焦点"?若不能,采用 §6.1 的降级方案,M2 首日验证。
 2. Codex sessions JSONL 中"user message"条目的准确字段名 —— M3 开工时抓一份真实日志确认。
 3. WorkBuddy 的 Claude-Code 兼容 hooks 覆盖哪些事件 —— M4 开工时实机验证。
+3b. dsh 的 Claude Code hook bridge 是否透传 UserPromptSubmit/Stop/Notification 三个事件、
+    session_id 字段是否一致 —— M4 开工时实机验证;不行则走原生插件路线(§5.4 路线 B)。
 4. 词书选哪本作为默认内置?(建议先放 CET-6 + GRE 两本,用户可另导入。)
 5. 全局热键库选型(`keyboard` 库需管理员权限的问题)—— M2 时验证,不行就只留托盘图标唤起。

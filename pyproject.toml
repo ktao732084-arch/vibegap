@@ -1,0 +1,12 @@
+[project]
+name = "wordgap"
+version = "0.1.0"
+description = "Vocabulary flashcards that auto-appear while your AI coding agent is running"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["wordgap"]
+omit = ["wordgap/__main__.py", "wordgap/ui/*", "wordgap/adapters/*"]

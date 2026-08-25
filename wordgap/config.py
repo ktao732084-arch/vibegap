@@ -1,0 +1,58 @@
+"""全局常量与用户配置加载。全项目唯一允许出现字面常量的模块(§7.6)。"""
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass, fields, replace
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+DAEMON_HOST = "127.0.0.1"
+DAEMON_PORT = 8765
+POPUP_DELAY_SEC = 18       # ARMED → SHOWING 的延迟(防闪弹)
+SUMMARY_LINGER_SEC = 2     # 软关闭小结停留时长
+SESSION_TTL_MIN = 30       # 孤儿会话清理阈值
+ADAPTER_TIMEOUT_SEC = 1    # 钩子上报 HTTP 超时
+LOG_RETENTION_DAYS = 7
+
+DATA_DIR = Path.home() / ".wordgap"
+DB_PATH = DATA_DIR / "wordgap.db"
+LOG_DIR = DATA_DIR / "logs"
+CONFIG_PATH = DATA_DIR / "config.json"
+
+
+@dataclass(frozen=True)
+class Settings:
+    """运行时可被 ~/.wordgap/config.json 覆盖的配置项。"""
+
+    popup_delay_sec: int = POPUP_DELAY_SEC
+    summary_linger_sec: int = SUMMARY_LINGER_SEC
+    session_ttl_min: int = SESSION_TTL_MIN
+    daemon_port: int = DAEMON_PORT
+
+
+def load_settings(path: Path = CONFIG_PATH) -> Settings:
+    """读用户配置 merge 到默认值;文件缺失或非法值回退默认并警告。"""
+    defaults = Settings()
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return defaults
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("config.json unreadable, using defaults: %s", exc)
+        return defaults
+    if not isinstance(raw, dict):
+        logger.warning("config.json is not an object, using defaults")
+        return defaults
+
+    result = defaults
+    for field in fields(Settings):
+        value = raw.get(field.name)
+        if value is None:
+            continue
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            result = replace(result, **{field.name: value})
+        else:
+            logger.warning("config item %s invalid (%r), using default", field.name, value)
+    return result
