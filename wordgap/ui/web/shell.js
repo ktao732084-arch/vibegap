@@ -91,9 +91,17 @@
       }).catch(() => {});
     },
 
-    /* --- 覆盖层:会话面板 / 词书菜单 --- */
-    closeOverlay() { el("overlay").classList.add("hidden"); },
+    /* --- 覆盖层:会话面板 / 词书菜单 / 设置。同键关闭,异键直接切换 --- */
+    _overlayKind: null,
+    closeOverlay() {
+      el("overlay").classList.add("hidden");
+      shell._overlayKind = null;
+    },
     isOverlayOpen() { return !el("overlay").classList.contains("hidden"); },
+    toggleOverlay(kind, showFn) {
+      if (shell._overlayKind === kind) shell.closeOverlay();
+      else showFn();
+    },
     showSessions() {
       const groups = {};
       (shell._sessions || []).forEach((s) => {
@@ -113,7 +121,7 @@
         return "<h4>" + esc(agent) + "</h4>" + rows.join("");
       });
       openOverlay('<h4>会话(点击跳转到对应窗口)</h4>' +
-        (blocks.length ? blocks.join("") : '<div class="ov-sub">还没有会话</div>'));
+        (blocks.length ? blocks.join("") : '<div class="ov-sub">还没有会话</div>'), "sessions");
       el("overlay").querySelectorAll(".ov-row").forEach((row, i) => {
         row.addEventListener("click", () => {
           const api = shell.api();
@@ -136,7 +144,7 @@
           '<span class="ov-main' + (b.current ? " ov-cur" : "") + '">' +
           esc(b.name) + '</span><span class="ov-sub">' + b.count + " 词" +
           (b.current ? " · 当前" : "") + "</span></div>");
-        openOverlay("<h4>切换词书</h4>" + rows.join(""));
+        openOverlay("<h4>切换词书</h4>" + rows.join(""), "books");
         el("overlay").querySelectorAll(".ov-row").forEach((row) => {
           row.addEventListener("click", () => {
             api.set_book(parseInt(row.getAttribute("data-book"), 10)).then(() => {
@@ -184,7 +192,8 @@
           '<div class="set-row"><span class="set-label">每日目标</span>' +
           num("daily_goal", s.daily_goal) + "</div>" +
           '<div class="set-row"><span class="set-label">弹出延迟</span>' +
-          num("popup_delay_sec", s.popup_delay_sec, "s") + "</div>"
+          num("popup_delay_sec", s.popup_delay_sec, "s") + "</div>",
+          "settings"
         );
         shell._settingsCache = s;
         el("overlay").querySelectorAll(".chip").forEach((c) => {
@@ -273,10 +282,11 @@
     },
   };
 
-  function openOverlay(html) {
+  function openOverlay(html, kind) {
     const ov = el("overlay");
     ov.innerHTML = html;
     ov.classList.remove("hidden");
+    shell._overlayKind = kind || null;
   }
   function esc(s) {
     const div = document.createElement("div");
@@ -318,16 +328,13 @@
 
   window.addEventListener("pywebviewready", () => {
     el("btn-close").addEventListener("click", () => shell.escape());
-    el("status-agents").addEventListener("click", () => {
-      shell.isOverlayOpen() ? shell.closeOverlay() : shell.showSessions();
-    });
-    el("status-text").addEventListener("click", () => {
-      shell.isOverlayOpen() ? shell.closeOverlay() : shell.showBooks();
-    });
+    el("status-agents").addEventListener("click", () =>
+      shell.toggleOverlay("sessions", shell.showSessions));
+    el("status-text").addEventListener("click", () =>
+      shell.toggleOverlay("books", shell.showBooks));
     el("btn-review").addEventListener("click", () => shell.startReview());
-    el("btn-settings").addEventListener("click", () => {
-      shell.isOverlayOpen() ? shell.closeOverlay() : shell.showSettings();
-    });
+    el("btn-settings").addEventListener("click", () =>
+      shell.toggleOverlay("settings", shell.showSettings));
     const apiNow = shell.api();
     if (apiNow && apiNow.get_prefs) {
       apiNow.get_prefs().then((p) => {
