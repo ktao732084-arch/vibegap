@@ -99,7 +99,30 @@ def create_window(bridge, kv_get, kv_set):
     )
     if hasattr(window.events, "moved"):
         window.events.moved += lambda x, y: _save_pos(kv_set, x, y)
+    if hasattr(window.events, "shown"):
+        window.events.shown += _hide_from_taskbar
     return window
+
+
+def _hide_from_taskbar() -> None:
+    """把窗口设为工具窗(不出现在任务栏/Alt-Tab)。找不到窗口则静默放弃。"""
+    import ctypes
+
+    GWL_EXSTYLE = -20
+    WS_EX_TOOLWINDOW = 0x00000080
+    WS_EX_APPWINDOW = 0x00040000
+    try:
+        user32 = ctypes.windll.user32
+        hwnd = user32.FindWindowW(None, WINDOW_TITLE)
+        if not hwnd:
+            return
+        style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        new_style = (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
+        if new_style != style:
+            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new_style)
+            logger.info("window hidden from taskbar")
+    except Exception as exc:  # noqa: BLE001 - 纯装饰性功能,失败不致命
+        logger.warning("hide from taskbar failed: %s", exc)
 
 
 def _load_pos(kv_get) -> tuple[int | None, int | None]:

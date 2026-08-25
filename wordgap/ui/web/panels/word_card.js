@@ -20,10 +20,29 @@
       })
       .join("");
     root.innerHTML =
-      '<div class="wc-trans">' + word.trans.join(";") + "</div>" +
-      '<div class="wc-phone">' + (word.usphone ? "/" + word.usphone + "/" : "") + "</div>" +
       '<div class="wc-word" id="wc-word">' + chars + "</div>" +
+      '<div class="wc-trans">' + word.trans.join(";") + "</div>" +
+      '<div class="wc-phone" id="wc-phone" title="点击发音">' +
+      (word.usphone ? "/" + word.usphone + "/" : "") + ' <span class="wc-speaker">🔊</span></div>' +
       '<div class="wc-hint">敲出单词 · Tab 看答案 · Esc 隐藏</div>';
+    const phone = document.getElementById("wc-phone");
+    if (phone) phone.addEventListener("click", pronounce);
+  }
+
+  function pronounce() {
+    if (!word) return;
+    const url =
+      "https://dict.youdao.com/dictvoice?audio=" +
+      encodeURIComponent(word.name) + "&type=2";
+    const player = new Audio(url);
+    player.play().catch(() => {
+      try {
+        const u = new SpeechSynthesisUtterance(word.name);
+        u.lang = "en-US";
+        speechSynthesis.cancel();
+        speechSynthesis.speak(u);
+      } catch (e) { /* 无声降级 */ }
+    });
   }
 
   function load() {
@@ -39,6 +58,7 @@
       }
       word = w; typed = 0; typos = 0; revealed = false;
       render();
+      pronounce();
     });
   }
 

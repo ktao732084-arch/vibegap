@@ -87,9 +87,23 @@ class Bridge:
     def get_news(self) -> list[dict]:
         """新闻轮播条数据;空列表 = 隐藏轮播条。"""
         return [
-            {"title": n.title, "source": n.source, "url": n.url}
+            {
+                "title": n.title,
+                "source": n.source,
+                "url": n.url,
+                "published_at": n.published_at,
+            }
             for n in self._newsfeed.items()
         ]
+
+    def get_state(self) -> dict:
+        """会话状态展示:哪些 agent 在跑(状态栏小圆点)。"""
+        snap = self._runtime.snapshot()
+        return {
+            "phase": snap.phase,
+            "any_running": snap.is_any_running,
+            "running_agents": list(snap.running_agents),
+        }
 
     def escape(self) -> None:
         """Esc 逃生:立即隐藏窗口。"""

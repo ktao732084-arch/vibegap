@@ -53,6 +53,9 @@ class SchedulerState:
     armed_at: datetime | None = None
     summary_until: datetime | None = None
     banner: AgentFinished | None = None
+    # Esc 抑制:用户手动隐藏后,同一批运行中的会话不得再次唤起窗口。
+    # 新的 RUNNING 事件(用户又提了问)或全部会话结束时解除。
+    suppressed: bool = False
 
 
 INITIAL_SCHEDULER = SchedulerState()
@@ -61,11 +64,21 @@ INITIAL_SCHEDULER = SchedulerState()
 def on_running_changed(
     state: SchedulerState, is_any_running: bool, now: datetime
 ) -> tuple[SchedulerState, list[Effect]]:
-    """会话层 any_running 翻转时调用。"""
-    if is_any_running and state.phase is Phase.HIDDEN:
+    """会话层运行状态同步(每 tick 调用,水平触发)。"""
+    if is_any_running and state.phase is Phase.HIDDEN and not state.suppressed:
         return replace(state, phase=Phase.ARMED, armed_at=now), []
-    if not is_any_running and state.phase is Phase.ARMED:
-        return SchedulerState(), []  # 任务在延迟期内就结束了:静默取消,零打扰
+    if not is_any_running:
+        if state.phase is Phase.ARMED:
+            return SchedulerState(), []  # 任务在延迟期内就结束了:静默取消,零打扰
+        if state.suppressed:
+            return replace(state, suppressed=False), []  # 全部会话结束,解除 Esc 抑制
+    return state, []
+
+
+def on_new_running_event(state: SchedulerState) -> tuple[SchedulerState, list[Effect]]:
+    """收到新的 RUNNING 事件(用户又提了问):解除 Esc 抑制。"""
+    if state.suppressed:
+        return replace(state, suppressed=False), []
     return state, []
 
 
@@ -121,10 +134,10 @@ def on_word_committed(
 
 
 def on_escape(state: SchedulerState) -> tuple[SchedulerState, list[Effect]]:
-    """Esc 逃生:任何非 HIDDEN 状态立即隐藏。"""
+    """Esc 逃生:立即隐藏,并抑制同一批运行会话再次唤起(spec §4.3)。"""
     if state.phase is Phase.HIDDEN:
         return state, []
-    return SchedulerState(), [HideWindow()]
+    return SchedulerState(suppressed=True), [HideWindow()]
 
 
 def on_hotkey_toggle(

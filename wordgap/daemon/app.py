@@ -69,6 +69,13 @@ def create_app(runtime: Runtime) -> FastAPI:
             "any_running": snap.is_any_running,
         }
 
+    @app.post("/toggle")
+    def toggle(request: Request) -> dict:
+        """手动唤起/隐藏窗口(全局热键落地前的替代入口)。"""
+        _reject_browser(request)
+        runtime.hotkey_toggle()
+        return {"ok": True, "phase": runtime.snapshot().phase}
+
     @app.get("/healthz")
     def healthz() -> dict:
         return {"ok": True}

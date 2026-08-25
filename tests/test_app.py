@@ -98,3 +98,16 @@ def test_dsh_agent_accepted(client):
         "/event", json={"agent": "dsh", "session_id": "s1", "event": "running"}
     )
     assert resp.status_code == 200
+
+
+def test_toggle_endpoint(client):
+    resp = client.post("/toggle")
+    assert resp.status_code == 200
+    assert resp.json()["phase"] == "SHOWING"
+    resp = client.post("/toggle")
+    assert resp.json()["phase"] == "HIDDEN"
+
+
+def test_toggle_rejects_browser_origin(client):
+    resp = client.post("/toggle", headers={"Origin": "http://evil.example"})
+    assert resp.status_code == 403

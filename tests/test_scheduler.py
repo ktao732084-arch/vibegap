@@ -139,6 +139,35 @@ def test_normal_word_commit_while_showing_is_noop():
     assert effects == []
 
 
+def test_escape_suppresses_rearm_while_same_sessions_running():
+    # 用户 Esc 后,同一批运行中的会话不得把窗口再弹回来(真机发现的缺陷)
+    state, _ = on_escape(_showing())
+    assert state.suppressed
+    state, effects = on_running_changed(state, True, T0)  # 每 tick 的水平触发
+    assert state.phase is Phase.HIDDEN
+    assert effects == []
+    state, effects = on_tick(state, T0 + DELAY * 10, True, DELAY)
+    assert state.phase is Phase.HIDDEN  # 永不再弹
+
+
+def test_new_running_event_clears_suppression():
+    from wordgap.daemon.scheduler import on_new_running_event
+
+    state, _ = on_escape(_showing())
+    state, _ = on_new_running_event(state)  # 用户又提了问
+    assert not state.suppressed
+    state, _ = on_running_changed(state, True, T0)
+    assert state.phase is Phase.ARMED
+
+
+def test_all_sessions_ending_clears_suppression():
+    state, _ = on_escape(_showing())
+    state, _ = on_running_changed(state, False, T0)  # 全部会话结束
+    assert not state.suppressed
+    state, _ = on_running_changed(state, True, T0)  # 新任务:恢复正常弹出
+    assert state.phase is Phase.ARMED
+
+
 def test_escape_hides_from_any_visible_phase():
     for state in (_showing(), _soft_closing()):
         new_state, effects = on_escape(state)

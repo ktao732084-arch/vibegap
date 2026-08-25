@@ -70,7 +70,19 @@ def test_get_news(env):
     assert bridge.get_news() == []
     feed.maybe_refresh(blocking=True)
     news = bridge.get_news()
-    assert news == [{"title": "新闻", "source": "s", "url": "u"}]
+    assert news == [{"title": "新闻", "source": "s", "url": "u", "published_at": ""}]
+
+
+def test_get_state_running_agents(env):
+    bridge, runtime, _ = env
+    from wordgap.daemon.events import Agent, AgentEvent, EventKind
+
+    assert bridge.get_state()["running_agents"] == []
+    runtime.handle_event(AgentEvent(Agent.CODEX, "a", EventKind.RUNNING, ts=None))
+    runtime.handle_event(AgentEvent(Agent.CLAUDE_CODE, "b", EventKind.RUNNING, ts=None))
+    state = bridge.get_state()
+    assert sorted(state["running_agents"]) == ["claude-code", "codex"]
+    assert state["any_running"] is True
 
 
 def test_escape_drives_runtime(env):

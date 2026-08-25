@@ -17,7 +17,7 @@ from typing import Callable, Protocol
 
 from wordgap.config import Settings
 from wordgap.daemon import scheduler, sessions
-from wordgap.daemon.events import AgentEvent, AgentFinished
+from wordgap.daemon.events import AgentEvent, AgentFinished, EventKind
 from wordgap.daemon.scheduler import (
     ClearBanner,
     HideWindow,
@@ -41,11 +41,12 @@ class Notifier(Protocol):
 
 @dataclass(frozen=True)
 class RuntimeSnapshot:
-    """GET /state 用的只读快照。"""
+    """GET /state 与 UI 状态栏用的只读快照。"""
 
     phase: str
     session_count: int
     is_any_running: bool
+    running_agents: tuple[str, ...] = ()  # 有运行中会话的 agent 名,去重有序
 
 
 class Runtime:
@@ -69,6 +70,8 @@ class Runtime:
         with self._lock:
             if event.ts is None:
                 event = replace(event, ts=self._clock())
+            if event.kind is EventKind.RUNNING:
+                self._sched, _ = scheduler.on_new_running_event(self._sched)
             self._sessions, finished = sessions.reduce_event(self._sessions, event)
             effects = self._sync_running_state()
             effects += self._apply_finished(finished)
@@ -115,12 +118,17 @@ class Runtime:
         self._run_effects(effects)
 
     def snapshot(self) -> RuntimeSnapshot:
-        """当前状态只读快照(调试端点用)。"""
+        """当前状态只读快照(调试端点与 UI 状态栏用)。"""
         with self._lock:
+            running = []
+            for key, info in self._sessions.sessions.items():
+                if info.is_running and key.agent.value not in running:
+                    running.append(key.agent.value)
             return RuntimeSnapshot(
                 phase=self._sched.phase.name,
                 session_count=len(self._sessions.sessions),
                 is_any_running=sessions.any_running(self._sessions),
+                running_agents=tuple(running),
             )
 
     def _sync_running_state(self) -> list[object]:

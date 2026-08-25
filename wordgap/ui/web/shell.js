@@ -56,20 +56,39 @@
           p.cursor + "/" + p.total + " · " + p.book_name + " · " + mode;
       });
     },
+    updateAgents() {
+      const api = shell.api();
+      if (!api || !api.get_state) return;
+      api.get_state().then((s) => {
+        const box = el("status-agents");
+        if (!s.running_agents || !s.running_agents.length) {
+          box.innerHTML = '<span class="dot idle"></span>空闲';
+        } else {
+          box.innerHTML =
+            '<span class="dot busy"></span>' + s.running_agents.join(" · ") + " 运行中";
+        }
+      }).catch(() => {});
+    },
     escape() {
       const api = shell.api();
-      if (api) api.escape();
+      if (api) api.escape().catch(() => {});
     },
   };
 
   window.shell = shell;
 
-  document.addEventListener("keydown", (e) => {
+  // 捕获阶段 + keyup 双监听:任何组件都无法吞掉 Esc
+  const onEsc = (e) => {
     if (e.key === "Escape") { e.preventDefault(); shell.escape(); }
-  });
+  };
+  document.addEventListener("keydown", onEsc, true);
+  document.addEventListener("keyup", onEsc, true);
 
   window.addEventListener("pywebviewready", () => {
+    el("btn-close").addEventListener("click", () => shell.escape());
     panels.forEach((p) => p.mount && p.mount());
     shell.updateStatus();
+    shell.updateAgents();
+    setInterval(shell.updateAgents, 3000);
   });
 })();
