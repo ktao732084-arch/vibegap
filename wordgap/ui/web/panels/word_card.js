@@ -45,9 +45,9 @@
     root.innerHTML =
       '<div class="wc-word" id="wc-word">' + chars + "</div>" +
       '<div class="wc-trans" title="' + escText(transFull) + '">' + escText(transShort) + "</div>" +
-      '<div class="wc-phone" id="wc-phone" title="点击发音">' +
+      '<div class="wc-phone"><span class="wc-phone-hit" id="wc-phone" title="点击发音">' +
       (word.usphone ? "/" + word.usphone + "/" : "") +
-      ' <span class="wc-speaker">🔊</span></div>' +
+      ' <span class="wc-speaker">🔊</span></span></div>' +
       '<div class="wc-hint">' + hint + "</div>";
     const phone = document.getElementById("wc-phone");
     if (phone) phone.addEventListener("click", pronounce);

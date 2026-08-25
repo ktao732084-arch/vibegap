@@ -129,7 +129,10 @@ def set_mode(
     seed: int | None = None,
     now: datetime | None = None,
 ) -> None:
-    """切换顺序/乱序。切换会重置游标并换 seed(顺序语义已变,旧游标无意义)。"""
+    """切换顺序/乱序,保留游标(已背数量不丢,只重排剩余顺序)。
+
+    代价:切换瞬间前后顺序不同,个别词可能重复出现或被跳过——比清零进度体验好得多。
+    """
     if mode not in VALID_MODES:
         raise WordbookError(f"unknown mode: {mode}")
     _get_progress_row(conn, wordbook_id)
@@ -139,7 +142,7 @@ def set_mode(
     ts = (now or datetime.now()).isoformat(timespec="seconds")
     with conn:
         conn.execute(
-            "UPDATE progress SET mode = ?, shuffle_seed = ?, cursor = 0, updated_at = ? "
+            "UPDATE progress SET mode = ?, shuffle_seed = ?, updated_at = ? "
             "WHERE wordbook_id = ?",
             (mode, new_seed, ts, wordbook_id),
         )

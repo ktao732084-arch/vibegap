@@ -114,13 +114,16 @@ def test_invalid_result_rejected(conn):
         commit_word(conn, book.id, "maybe")
 
 
-def test_set_mode_resets_cursor(conn):
+def test_set_mode_preserves_cursor(conn):
     book = _book(conn, "sequential")
+    commit_word(conn, book.id, "pass", now=NOW)
     commit_word(conn, book.id, "pass", now=NOW)
     set_mode(conn, book.id, "shuffled", seed=99, now=NOW)
     summary = get_summary(conn, book.id)
-    assert summary.cursor == 0
+    assert summary.cursor == 2  # 已背数量保留
     assert summary.mode == "shuffled"
+    set_mode(conn, book.id, "sequential", now=NOW)
+    assert get_summary(conn, book.id).cursor == 2
 
 
 def test_progress_missing_rejected(conn):

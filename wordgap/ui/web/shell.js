@@ -160,7 +160,8 @@
           '" data-v="' + val + '">' + label + "</span>";
         const num = (key, val, unit) =>
           '<span class="set-chips"><span class="num-btn" data-num="' + key +
-          '" data-d="-1">−</span><span class="num-val" id="nv-' + key + '">' +
+          '" data-d="-1">−</span><span class="num-val" id="nv-' + key +
+          '" data-key="' + key + '" title="点击直接输入">' +
           val + (unit || "") + '</span><span class="num-btn" data-num="' + key +
           '" data-d="1">+</span></span>';
         openOverlay(
@@ -172,7 +173,7 @@
           '<div class="set-row"><span class="set-label">自动发音</span><span class="set-chips">' +
           chip("sound", "1", "开", prefs.auto_pronounce) +
           chip("sound", "0", "关", !prefs.auto_pronounce) + "</span></div>" +
-          '<div class="set-row"><span class="set-label">词书模式(切换会重置本书进度)</span><span class="set-chips">' +
+          '<div class="set-row"><span class="set-label">词书模式(进度保留)</span><span class="set-chips">' +
           chip("mode", "sequential", "顺序", s.mode === "sequential") +
           chip("mode", "shuffled", "乱序", s.mode === "shuffled") + "</span></div>" +
           '<div class="set-row"><span class="set-label">每日目标</span>' +
@@ -189,7 +190,41 @@
           b.addEventListener("click", () => shell._onSettingNum(
             b.getAttribute("data-num"), parseInt(b.getAttribute("data-d"), 10)));
         });
+        el("overlay").querySelectorAll(".num-val").forEach((n) => {
+          n.addEventListener("click", () => shell._editNum(n.getAttribute("data-key")));
+        });
       });
+    },
+    _editNum(key) {
+      const api = shell.api();
+      const s = shell._settingsCache;
+      const node = el("nv-" + key);
+      if (!api || !s || !node) return;
+      node.innerHTML = '<input class="num-input" id="ni-' + key +
+        '" type="number" value="' + s[key] + '">';
+      const inp = el("ni-" + key);
+      inp.focus();
+      inp.select();
+      let isDone = false;
+      const commitVal = () => {
+        if (isDone) return;
+        isDone = true;
+        const v = parseInt(inp.value, 10);
+        if (isNaN(v)) {
+          if (shell.isOverlayOpen()) shell.showSettings();
+          return;
+        }
+        api.set_setting(key, v).then((r) => {
+          if (r.ok) s[key] = r.value;
+          shell.updateStatus();
+          if (shell.isOverlayOpen()) shell.showSettings();
+        });
+      };
+      inp.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") commitVal();
+      });
+      inp.addEventListener("blur", commitVal);
     },
     _onSettingChip(group, val) {
       const api = shell.api();

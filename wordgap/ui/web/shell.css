@@ -82,7 +82,14 @@ body {
   font-size: 13px; user-select: none;
 }
 .num-btn:hover { border-color: var(--accent); color: var(--accent); }
-.num-val { min-width: 34px; text-align: center; color: var(--ink); }
+.num-val { min-width: 34px; text-align: center; color: var(--ink); cursor: pointer; }
+.num-val:hover { color: var(--accent); }
+.num-input {
+  width: 52px; padding: 1px 4px; text-align: center;
+  background: var(--card); color: var(--ink);
+  border: 1px solid var(--accent); border-radius: 5px;
+  font: inherit; outline: none;
+}
 #btn-review { font-size: 11px; }
 
 #overlay {
@@ -114,11 +121,9 @@ body {
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   max-height: 2.95em;
 }
-.wc-phone {
-  font-size: 12px; color: var(--ink-2); text-align: center; margin-top: 4px;
-  cursor: pointer;
-}
-.wc-phone:hover { color: var(--accent); }
+.wc-phone { font-size: 12px; color: var(--ink-2); text-align: center; margin-top: 4px; }
+.wc-phone-hit { cursor: pointer; }
+.wc-phone-hit:hover { color: var(--accent); }
 .wc-speaker { font-size: 13px; }
 .wc-trans { margin-top: 8px; }
 .wc-word {
