@@ -28,12 +28,23 @@ dsh plugin --profile web add link:<绝对路径>/plugin
 dsh plugin --profile web add "github:<owner>/dsh-wordgap#main"
 ```
 
-## 装机后待验证(共 3 处,均已在代码中标注 TODO)
+## 事件契约(已对 dsh 源码验证,2026-08-26)
 
-1. turn 级事件名:教程只确认了 `session/created`;`turn/start`、`turn/end`、
-   `session/completed` 是按命名惯例的推断,装机开 debug 日志校准 lib/index.js 三行。
-2. 事件回调参数里 session id / cwd 的字段名(`sid()`/`dir()` 两个取值函数已做多名兼容)。
-3. cordis.patch.yml 的确切格式(参考 dsh-web-attention-badge / turtle-ui 实现)。
+- `ctx.on('agent/status', ({agent, status}) => ...)`,`status: 'idle' | 'running'`,
+  每次状态翻转必发;`{global: true}` 监听全部 agent。
+  出处:`packages/core/agent/src/runtime-types.ts`。
+- `agent.session.id` 为会话 id;`agent.status` 镜像当前状态。
+- cordis.patch.yml 格式已按 dsh-web-attention-badge 实物校正(insert 列表)。
+- 唯一待装机确认:AgentOptions 里 cwd 的字段名(代码已做 cwd/workspace 双名兼容)。
+
+## UI 形态(形态 B)参考路径
+
+dsh-web-attention-badge 证明了浏览器半边可以**免构建**:`dsh.client` 声明 +
+手写 ModuleLoader bundle(`window.__ModuleLoader__.load`),`inject: ["slots"]`,
+`ctx.slots.register({name: "shell.overlay", ...}, Component)` 即挂进 web UI;
+组件经 GlobalStandardProps 拿 `useSessions` store(`pendingInteraction` /
+`completed` 字段)。WordGap 面板可按此模式做 React 单词卡,数据走本机 daemon
+(需给 daemon 加 localhost 限定的 CORS 面板端点)。
 
 ## 发布到生态(可选,学习类目前是空白)
 

@@ -1,5 +1,9 @@
 "use strict";
-// dsh-wordgap: report agent turn lifecycle to the local WordGap daemon.
+// dsh-wordgap: report agent lifecycle to the local WordGap daemon.
+// Event contract source-verified against deepseek-harness (2026-08-26):
+//   packages/core/agent/src/runtime-types.ts
+//     'agent/status'(payload: { agent: Agent; status: AgentStatus }): void
+//     AgentStatus = 'idle' | 'running'  (emitted on every transition)
 // Fire-and-forget, 1s timeout, catch-all -- must never break the harness.
 // Plain CJS on purpose: no build step, installable via `link:` directly.
 
@@ -27,12 +31,16 @@ function post(event, sessionId, cwd) {
 }
 
 exports.apply = function apply(ctx) {
-  const sid = (s) => (s && (s.id || s.sessionId || s.session_id)) || "dsh-session";
-  const dir = (s) => (s && (s.cwd || s.workdir)) || "";
-  // TODO(装机实测校准): 'session/created' 见于官方教程,turn 级事件名
-  // (turn/start、turn/end 或 pre-step / turn-end)以实际 dsh 版本为准 --
-  // 安装后开 debug 日志确认一次即可,只改这三行。
-  ctx.on("turn/start", (s) => post("running", sid(s), dir(s)));
-  ctx.on("turn/end", (s) => post("done", sid(s), dir(s)));
-  ctx.on("session/completed", (s) => post("done", sid(s), dir(s)));
+  ctx.on(
+    "agent/status",
+    function onStatus(payload) {
+      const agent = payload && payload.agent;
+      const sid = (agent && agent.session && agent.session.id) || "dsh-session";
+      // TODO(装机确认): cwd 字段名 -- AgentOptions 里按 cwd/workspace 双名兼容取
+      const opts = (agent && agent.options) || {};
+      const cwd = opts.cwd || opts.workspace || "";
+      post(payload.status === "running" ? "running" : "done", sid, cwd);
+    },
+    { global: true },
+  );
 };

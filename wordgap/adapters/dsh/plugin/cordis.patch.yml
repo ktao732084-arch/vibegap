@@ -1,5 +1,5 @@
-# dsh bundle patch: activate the dsh-wordgap plugin in the profile config.
-# Format per dsh docs (dsh.bundle.patch); verify against a real install --
-# reference implementations: dsh-web-attention-badge / turtle-ui.
-plugins:
-  dsh-wordgap: {}
+# dsh-wordgap bundle patch: one host-side roster row.
+# Format verified against dsh-web-attention-badge (insert list of {id, name}).
+- insert:
+    - id: wordgap-bridge
+      name: 'dsh-wordgap'
