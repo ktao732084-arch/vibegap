@@ -232,35 +232,6 @@ class Bridge:
         except Exception as exc:  # noqa: BLE001 - 焦点失败退化为"再点一次"
             logger.warning("request_focus failed: %s", exc)
 
-    def activate_session(self, agent: str, cwd: str) -> dict:
-        """把该会话所属的 agent 窗口置顶(按标题匹配项目名+agent 名);找不到退回开目录。"""
-        import os
-
-        from wordgap.ui import win32util
-
-        leaf = Path(cwd).name if cwd else ""
-        hints = {
-            "claude-code": ["claude"],
-            "codex": ["codex"],
-            "pi": ["pi -", "pi agent"],
-            "dsh": ["dsh", "deepseek"],
-            "workbuddy": ["workbuddy"],
-        }.get(str(agent), [])
-        match = win32util.find_best_window([leaf], hints)
-        if match is not None:
-            hwnd, title = match
-            logger.info("activate_session %s -> window '%s'", agent, title)
-            if win32util.activate_window(hwnd):
-                return {"ok": True, "via": "window", "title": title}
-        if str(agent) == "claude-code":
-            # 与"通知点击跳转"同通道:claude:// 协议激活桌面端(实测可置顶)
-            try:
-                os.startfile("claude://")  # noqa: S606
-                return {"ok": True, "via": "protocol"}
-            except OSError as exc:
-                logger.warning("claude:// activation failed: %s", exc)
-        return {"error": "not_found"}  # 找不到就静默失败,不做打开目录之类的替代动作
-
     def resume_session(self, agent: str, session_id: str, cwd: str = "") -> dict:
         """在新终端里用官方 CLI 恢复该对话(claude --resume / codex resume)。"""
         import re

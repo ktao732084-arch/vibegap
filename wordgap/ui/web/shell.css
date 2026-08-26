@@ -105,6 +105,8 @@ body {
   border-radius: 5px; cursor: pointer; line-height: 1.5;
 }
 .ov-row:hover { background: var(--border); }
+.ov-row.static { cursor: default; }
+.ov-row.static:hover { background: transparent; }
 .ov-row .dot { flex-shrink: 0; }
 .ov-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ov-sub { color: var(--ink-2); font-size: 11px; }
