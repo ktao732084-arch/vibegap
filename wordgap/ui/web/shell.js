@@ -196,7 +196,7 @@
           chip("autopop", "1", "开", !!s.auto_popup) +
           chip("autopop", "0", "关", !s.auto_popup) + "</span></div>" +
           '<div class="set-row"><span class="set-label">手动唤醒</span>' +
-          '<span class="ov-sub">Ctrl+Alt+W</span></div>' +
+          '<span class="ov-sub">' + (s.hotkey || "热键不可用(组合键全被占用)") + "</span></div>" +
           '<div class="set-row"><span class="set-label">词书模式(进度保留)</span><span class="set-chips">' +
           chip("mode", "sequential", "顺序", s.mode === "sequential") +
           chip("mode", "shuffled", "乱序", s.mode === "shuffled") + "</span></div>" +

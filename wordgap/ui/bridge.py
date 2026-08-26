@@ -336,10 +336,13 @@ class Bridge:
             mode = None
             if book_id is not None:
                 mode = progress.get_summary(self._conn, book_id).mode
+        from wordgap.ui import hotkey
+
         return {
             "popup_delay_sec": self._settings.popup_delay_sec,
             "daily_goal": self._settings.daily_goal,
             "auto_popup": self._settings.auto_popup,
+            "hotkey": hotkey.get_active_label() or "",
             "mode": mode,
         }
 

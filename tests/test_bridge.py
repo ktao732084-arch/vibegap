@@ -163,7 +163,13 @@ def test_settings_roundtrip(tmp_path):
     bridge = Bridge(db_path, runtime, NewsFeed(fetcher=lambda: []), Settings(), config_path=cfg)
 
     s = bridge.get_settings()
-    assert s == {"popup_delay_sec": 18, "daily_goal": 50, "auto_popup": True, "mode": "shuffled"}
+    assert s == {
+        "popup_delay_sec": 18,
+        "daily_goal": 50,
+        "auto_popup": True,
+        "hotkey": "",  # 测试环境不启动热键线程
+        "mode": "shuffled",
+    }
     assert bridge.set_setting("daily_goal", 80) == {"ok": True, "value": 80}
     assert bridge.set_setting("popup_delay_sec", 999) == {"ok": True, "value": 120}  # 夹到上限
     assert bridge.set_setting("nope", 1) == {"error": "bad_key"}
