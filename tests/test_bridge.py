@@ -184,11 +184,6 @@ def test_resume_session_validation(env):
     # 合法参数不真的拉起终端(仅在真机手测),这里只验证白名单逻辑
 
 
-def test_open_path_rejects_non_dir(env):
-    bridge, _, _ = env
-    assert bridge.open_path("Z:/definitely/not/a/dir") == {"error": "not_a_dir"}
-
-
 def test_get_state_running_agents(env):
     bridge, runtime, _ = env
     from wordgap.daemon.events import Agent, AgentEvent, EventKind

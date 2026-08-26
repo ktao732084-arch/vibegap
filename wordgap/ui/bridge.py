@@ -259,11 +259,7 @@ class Bridge:
                 return {"ok": True, "via": "protocol"}
             except OSError as exc:
                 logger.warning("claude:// activation failed: %s", exc)
-        target = Path(str(cwd)) if cwd else None
-        if target and target.is_dir():
-            os.startfile(str(target))  # noqa: S606
-            return {"ok": True, "via": "folder"}
-        return {"error": "not_found"}
+        return {"error": "not_found"}  # 找不到就静默失败,不做打开目录之类的替代动作
 
     def resume_session(self, agent: str, session_id: str, cwd: str = "") -> dict:
         """在新终端里用官方 CLI 恢复该对话(claude --resume / codex resume)。"""
@@ -285,16 +281,6 @@ class Bridge:
         except OSError as exc:
             logger.error("resume_session failed: %s", exc)
             return {"error": "launch_failed"}
-        return {"ok": True}
-
-    def open_path(self, path: str) -> dict:
-        """打开某会话的项目目录(会话面板点击路径)。仅接受真实存在的目录。"""
-        import os
-
-        target = Path(str(path))
-        if not target.is_dir():
-            return {"error": "not_a_dir"}
-        os.startfile(str(target))  # noqa: S606 - 本机目录浏览,来源为本地 agent hook
         return {"ok": True}
 
     def get_settings(self) -> dict:
