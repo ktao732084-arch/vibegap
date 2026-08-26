@@ -100,7 +100,7 @@ class Runtime:
             self._sched, eff = scheduler.on_tick(
                 self._sched,
                 now,
-                sessions.any_running(self._sessions),
+                self._effective_running(),
                 timedelta(seconds=self._settings.popup_delay_sec),
             )
             effects += eff
@@ -111,7 +111,7 @@ class Runtime:
         with self._lock:
             self._sched, effects = scheduler.on_word_committed(
                 self._sched,
-                sessions.any_running(self._sessions),
+                self._effective_running(),
                 self._clock(),
                 timedelta(seconds=self._settings.summary_linger_sec),
             )
@@ -163,15 +163,19 @@ class Runtime:
                 sessions=tuple(views),
             )
 
+    def _effective_running(self) -> bool:
+        """调度器眼中的 any_running:自动唤醒关闭时恒为 False(只可手动唤起)。"""
+        return self._settings.auto_popup and sessions.any_running(self._sessions)
+
     def _sync_running_state(self) -> list[object]:
         self._sched, effects = scheduler.on_running_changed(
-            self._sched, sessions.any_running(self._sessions), self._clock()
+            self._sched, self._effective_running(), self._clock()
         )
         return list(effects)
 
     def _apply_finished(self, finished: list[AgentFinished]) -> list[object]:
         effects: list[object] = []
-        is_running = sessions.any_running(self._sessions)
+        is_running = self._effective_running()
         for item in finished:
             self._sched, eff = scheduler.on_agent_finished(self._sched, item, is_running)
             effects += eff

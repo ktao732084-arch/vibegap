@@ -72,6 +72,14 @@ def test_load_settings_rejects_invalid_values(tmp_path):
     assert load_settings(path) == Settings()
 
 
+def test_load_settings_bool_field(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"auto_popup": False}), encoding="utf-8")
+    assert load_settings(path).auto_popup is False
+    path.write_text(json.dumps({"auto_popup": 5}), encoding="utf-8")  # 非法类型
+    assert load_settings(path).auto_popup is True
+
+
 def test_load_settings_broken_json(tmp_path):
     path = tmp_path / "config.json"
     path.write_text("{broken", encoding="utf-8")

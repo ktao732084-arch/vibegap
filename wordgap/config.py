@@ -64,7 +64,8 @@ class Settings:
     summary_linger_sec: int = SUMMARY_LINGER_SEC
     session_ttl_min: int = SESSION_TTL_MIN
     daemon_port: int = DAEMON_PORT
-    daily_goal: int = 50  # 每日目标词数
+    daily_goal: int = 50        # 每日目标词数
+    auto_popup: bool = True     # 关闭后 agent 运行不自动弹窗,仅热键/接口手动唤醒
 
 
 def load_settings(path: Path = CONFIG_PATH) -> Settings:
@@ -86,7 +87,11 @@ def load_settings(path: Path = CONFIG_PATH) -> Settings:
         value = raw.get(field.name)
         if value is None:
             continue
-        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        if isinstance(getattr(defaults, field.name), bool):
+            is_valid = isinstance(value, bool)
+        else:
+            is_valid = isinstance(value, int) and not isinstance(value, bool) and value > 0
+        if is_valid:
             result = replace(result, **{field.name: value})
         else:
             logger.warning("config item %s invalid (%r), using default", field.name, value)

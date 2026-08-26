@@ -162,6 +162,35 @@ def test_event_without_ts_uses_injected_clock():
     assert runtime.snapshot().session_count == 0
 
 
+def test_auto_popup_off_never_arms_but_hotkey_still_works():
+    clock = FakeClock()
+    notifier = FakeNotifier()
+    runtime = Runtime(
+        settings=Settings(popup_delay_sec=18, auto_popup=False),
+        notifier=notifier,
+        clock=clock,
+    )
+    runtime.handle_event(_event(EventKind.RUNNING, clock=clock))
+    clock.advance(60)
+    runtime.tick()
+    assert notifier.calls == []  # 关闭自动唤醒:任务再久也不弹
+    assert runtime.snapshot().phase == "HIDDEN"
+    runtime.hotkey_toggle()
+    assert notifier.calls == [("show_window",)]  # 手动唤醒不受影响
+
+
+def test_auto_popup_off_finished_while_manual_showing_still_banners():
+    clock = FakeClock()
+    notifier = FakeNotifier()
+    runtime = Runtime(
+        settings=Settings(auto_popup=False), notifier=notifier, clock=clock
+    )
+    runtime.handle_event(_event(EventKind.RUNNING, clock=clock))
+    runtime.hotkey_toggle()  # 手动打开着背单词
+    runtime.handle_event(_event(EventKind.DONE, clock=clock))
+    assert ("show_banner", "claude-code", "done") in notifier.calls
+
+
 def test_notifier_failure_does_not_break_runtime():
     class BrokenNotifier(FakeNotifier):
         def show_window(self):

@@ -192,6 +192,11 @@
           '<div class="set-row"><span class="set-label">自动发音</span><span class="set-chips">' +
           chip("sound", "1", "开", prefs.auto_pronounce) +
           chip("sound", "0", "关", !prefs.auto_pronounce) + "</span></div>" +
+          '<div class="set-row"><span class="set-label">自动唤醒(agent 运行时弹出)</span><span class="set-chips">' +
+          chip("autopop", "1", "开", !!s.auto_popup) +
+          chip("autopop", "0", "关", !s.auto_popup) + "</span></div>" +
+          '<div class="set-row"><span class="set-label">手动唤醒</span>' +
+          '<span class="ov-sub">Ctrl+Alt+W</span></div>' +
           '<div class="set-row"><span class="set-label">词书模式(进度保留)</span><span class="set-chips">' +
           chip("mode", "sequential", "顺序", s.mode === "sequential") +
           chip("mode", "shuffled", "乱序", s.mode === "shuffled") + "</span></div>" +
@@ -280,6 +285,8 @@
       } else if (group === "sound") {
         prefs.auto_pronounce = val === "1";
         api.set_pref("auto_pronounce", prefs.auto_pronounce).then(() => shell.showSettings());
+      } else if (group === "autopop") {
+        api.set_setting("auto_popup", val === "1").then(() => shell.showSettings());
       } else if (group === "mode") {
         api.set_book_mode(val).then(() => {
           shell.updateStatus();

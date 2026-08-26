@@ -339,11 +339,18 @@ class Bridge:
         return {
             "popup_delay_sec": self._settings.popup_delay_sec,
             "daily_goal": self._settings.daily_goal,
+            "auto_popup": self._settings.auto_popup,
             "mode": mode,
         }
 
-    def set_setting(self, key: str, value: int) -> dict:
-        """改数值设置:写 config.json 持久化 + runtime 热更新。"""
+    def set_setting(self, key: str, value) -> dict:
+        """改设置:写 config.json 持久化 + runtime 热更新。"""
+        if key == "auto_popup":
+            flag = bool(value)
+            self._settings = replace(self._settings, auto_popup=flag)
+            self._runtime.update_settings(self._settings)
+            self._persist_config(key, flag)
+            return {"ok": True, "value": flag}
         if key not in _SETTING_LIMITS:
             return {"error": "bad_key"}
         low, high = _SETTING_LIMITS[key]

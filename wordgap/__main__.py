@@ -30,6 +30,7 @@ from wordgap.daemon.runtime import Runtime
 from wordgap.store import db as store_db
 from wordgap.store import wordbooks
 from wordgap.ui.bridge import open_bridge
+from wordgap.ui.hotkey import start_hotkey_listener
 from wordgap.ui.toast import ToastNotifier
 from wordgap.ui.window import WindowNotifier, create_window
 
@@ -147,6 +148,7 @@ def main() -> None:
 
     _start_server(runtime, settings)
     _start_ticker(runtime, newsfeed, _make_codex_watcher(runtime))
+    start_hotkey_listener(runtime.hotkey_toggle)
 
     window = create_window(bridge, _kv_get, _kv_set)
     notifier.set_window(window)
