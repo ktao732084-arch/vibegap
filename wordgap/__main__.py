@@ -12,6 +12,7 @@ import time
 import uvicorn
 
 from wordgap.config import (
+    CODEX_SESSIONS_DIR,
     DAEMON_HOST,
     DB_PATH,
     DICTS_DIR,
@@ -22,6 +23,8 @@ from wordgap.config import (
     load_settings,
 )
 from wordgap.daemon.app import create_app
+from wordgap.daemon.codex_watcher import CodexWatcher
+from wordgap.daemon.events import Agent, AgentEvent, EventKind
 from wordgap.daemon.newsfeed import NewsFeed
 from wordgap.daemon.runtime import Runtime
 from wordgap.store import db as store_db
@@ -90,12 +93,40 @@ def _start_server(runtime: Runtime, settings: Settings) -> None:
     threading.Thread(target=server.run, name="wordgap-server", daemon=True).start()
 
 
-def _start_ticker(runtime: Runtime, newsfeed: NewsFeed) -> None:
+def _make_codex_watcher(runtime: Runtime) -> CodexWatcher | None:
+    """codex 适配走日志监听(其 notify 已被 Codex Desktop 占用,不碰)。"""
+    if not CODEX_SESSIONS_DIR.is_dir():
+        logger.info("codex not detected, watcher disabled")
+        return None
+
+    def emit(sid: str, kind: str, cwd: str) -> None:
+        runtime.handle_event(
+            AgentEvent(
+                agent=Agent.CODEX,
+                session_id=sid,
+                kind=EventKind.RUNNING if kind == "running" else EventKind.DONE,
+                ts=None,
+                cwd=cwd,
+            )
+        )
+
+    logger.info("codex watcher enabled: %s", CODEX_SESSIONS_DIR)
+    return CodexWatcher(CODEX_SESSIONS_DIR, emit)
+
+
+def _start_ticker(
+    runtime: Runtime, newsfeed: NewsFeed, watcher: CodexWatcher | None
+) -> None:
     def loop() -> None:
         while True:
             time.sleep(TICK_INTERVAL_SEC)
-            runtime.tick()
-            newsfeed.maybe_refresh()
+            try:
+                runtime.tick()
+                newsfeed.maybe_refresh()
+                if watcher is not None:
+                    watcher.poll()
+            except Exception:  # noqa: BLE001 - ticker 线程绝不能死
+                logger.exception("ticker iteration failed")
 
     threading.Thread(target=loop, name="wordgap-ticker", daemon=True).start()
 
@@ -115,7 +146,7 @@ def main() -> None:
     bridge = open_bridge(DB_PATH, runtime, newsfeed, settings)
 
     _start_server(runtime, settings)
-    _start_ticker(runtime, newsfeed)
+    _start_ticker(runtime, newsfeed, _make_codex_watcher(runtime))
 
     window = create_window(bridge, _kv_get, _kv_set)
     notifier.set_window(window)

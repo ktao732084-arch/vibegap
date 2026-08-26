@@ -306,17 +306,20 @@ CREATE TABLE kv (
 - `install.py` 职责:**merge** 进现有 settings.json(绝不覆盖用户已有 hooks),写入前备份原文件,
   提供 `--uninstall` 精确移除自己写入的条目。
 
-### 5.2 Codex CLI(M3)
+### 5.2 Codex CLI(M3,已实现,路线有变)
 
-机制:两半拼起来。
+机制:**纯日志监听**(`daemon/codex_watcher.py`),不再使用 notify。
 
-- **done**:`~/.codex/config.toml` 的 `notify` 配置(官方,任务完成时执行命令)→ `notify.ps1 -Event done`。
-- **running**:Codex 无"开始"钩子。用 `log_watcher.py`(daemon 内的后台任务)监听
-  `~/.codex/sessions/**/*.jsonl` 的追加:出现新的 user message 条目 ⇒ 上报 `running`。
-  watcher 用轮询(2s 间隔)而非文件系统事件,实现简单且 Windows 下更可靠。
-- `session_id` 用 JSONL 文件名(即 codex 的 session id)。
-- 风险:sessions 日志格式非公开契约,codex 升级可能变。隔离在 `log_watcher.py` 单文件内,
-  解析失败时降级为"只有 done 信号"(弹窗改为手动唤起),并在日志中警告。
+- 实机发现 `~/.codex/config.toml` 的 `notify` 已被 Codex Desktop 自身占用
+  (codex-computer-use.exe turn-ended),覆盖会破坏桌面端功能 → 放弃 notify 路线。
+- 实测日志事件(2026-08 抓取):`event_msg.payload.type` 中
+  `task_started` → running;`task_complete` / `turn_aborted` → done;
+  首行 `session_meta` 提供 session_id 与 cwd。
+- watcher 由 ticker 每秒驱动,只扫最近 2 天的日期目录;增量读取(记 offset),
+  只消费完整行;daemon 启动前已有内容不回放,监听期间新建的文件从头处理。
+- 好处:零配置修改、零冲突,codex 侧无任何安装步骤(设置面板显示"自动 · 日志监听")。
+- 风险:sessions 日志格式非公开契约,codex 升级可能变。全部隔离在 codex_watcher.py
+  单文件内,解析失败静默降级(无事件),不影响其他 agent。
 
 ### 5.3 pi(M4)
 

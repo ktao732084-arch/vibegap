@@ -12,7 +12,15 @@ import threading
 from dataclasses import replace
 from pathlib import Path
 
-from wordgap.config import CONFIG_PATH, Settings
+from wordgap.config import (
+    CLAUDE_SETTINGS_PATH,
+    CODEX_SESSIONS_DIR,
+    CONFIG_PATH,
+    DSH_DIR,
+    PI_DIR,
+    WORKBUDDY_SETTINGS_PATH,
+    Settings,
+)
 from wordgap.daemon.newsfeed import NewsFeed
 from wordgap.daemon.runtime import Runtime
 from wordgap.store import progress, stats, wordbooks
@@ -29,6 +37,13 @@ _RESUME_COMMANDS = {
     "claude-code": "claude --resume {sid}",
     "codex": "codex resume {sid}",
 }
+
+# 走 Claude-Code 兼容钩子安装器接入的 agent -> settings.json 路径
+_HOOK_TARGETS = {
+    "claude-code": CLAUDE_SETTINGS_PATH,
+    "workbuddy": WORKBUDDY_SETTINGS_PATH,
+}
+_INSTALLER = Path(__file__).resolve().parents[1] / "adapters" / "claude_code" / "install.py"
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +269,66 @@ class Bridge:
             return {"error": "launch_failed"}
         return {"ok": True}
 
+    def get_agents(self) -> list[dict]:
+        """设置面板 Agent 区块:每个 agent 的检测/接入状态。"""
+        return [
+            _hook_agent_status("claude-code", CLAUDE_SETTINGS_PATH),
+            {
+                "agent": "codex",
+                "status": "connected" if CODEX_SESSIONS_DIR.is_dir() else "missing",
+                "detail": "自动 · 日志监听" if CODEX_SESSIONS_DIR.is_dir() else "未检测到",
+            },
+            _hook_agent_status("workbuddy", WORKBUDDY_SETTINGS_PATH),
+            {
+                "agent": "pi",
+                "status": "manual" if PI_DIR.is_dir() else "missing",
+                "detail": "手动装扩展(adapters/pi)" if PI_DIR.is_dir() else "未检测到",
+            },
+            {
+                "agent": "dsh",
+                "status": "manual" if DSH_DIR.is_dir() else "missing",
+                "detail": "hook bridge(见 adapters/dsh)" if DSH_DIR.is_dir() else "未检测到",
+            },
+        ]
+
+    def install_agent(self, agent: str) -> dict:
+        """一键接入(复用 claude_code 安装器,merge+备份)。"""
+        return self._run_installer(agent, uninstall=False)
+
+    def uninstall_agent(self, agent: str) -> dict:
+        """一键移除本工具写入的钩子。"""
+        return self._run_installer(agent, uninstall=True)
+
+    def _run_installer(self, agent: str, uninstall: bool) -> dict:
+        import subprocess
+        import sys
+
+        target = _HOOK_TARGETS.get(str(agent))
+        if target is None:
+            return {"error": "unsupported_agent"}
+        if not target.parent.is_dir():
+            return {"error": "not_detected"}
+        cmd = [
+            sys.executable, str(_INSTALLER),
+            "--settings", str(target),
+            "--agent", str(agent),
+            "--port", str(self._settings.daemon_port),
+        ]
+        if uninstall:
+            cmd.append("--uninstall")
+        try:
+            proc = subprocess.run(  # noqa: S603 - 固定安装器路径+白名单参数
+                cmd, capture_output=True, text=True, timeout=15,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            logger.error("installer failed: %s", exc)
+            return {"error": "installer_failed"}
+        if proc.returncode != 0:
+            logger.error("installer exit %d: %s", proc.returncode, proc.stderr[-300:])
+            return {"error": "installer_failed"}
+        return {"ok": True}
+
     def get_settings(self) -> dict:
         """设置面板数据:可调数值 + 当前词书模式。"""
         with self._lock:
@@ -340,6 +415,19 @@ class Bridge:
         """组合根关闭时调用(下划线前缀:不暴露给 JS)。"""
         with self._lock:
             self._conn.close()
+
+
+def _hook_agent_status(name: str, settings_path: Path) -> dict:
+    """走 Claude 兼容钩子的 agent:按配置目录与 wordgap 标记判定状态。"""
+    if not settings_path.parent.is_dir():
+        return {"agent": name, "status": "missing", "detail": "未检测到"}
+    try:
+        content = settings_path.read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        content = ""
+    if "wordgap" in content:
+        return {"agent": name, "status": "connected", "detail": "已接入"}
+    return {"agent": name, "status": "available", "detail": "可接入"}
 
 
 def open_bridge(

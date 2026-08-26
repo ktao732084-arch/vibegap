@@ -42,6 +42,14 @@ WINDOW_TITLE = "WordGap"
 
 DICTS_DIR = Path(__file__).resolve().parent.parent / "dicts"  # 内置词书目录
 
+# 各 agent 探测/接入路径(设置面板 Agent 区块 + codex 日志监听)
+CLAUDE_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+CODEX_SESSIONS_DIR = Path.home() / ".codex" / "sessions"
+PI_DIR = Path.home() / ".pi"
+DSH_DIR = Path.home() / ".dsh"
+WORKBUDDY_SETTINGS_PATH = Path.home() / ".workbuddy-ai" / "settings.json"
+CODEX_WATCH_DAYS = 2       # 只扫最近 N 天的日期目录,避免全树遍历
+
 DATA_DIR = Path.home() / ".wordgap"
 DB_PATH = DATA_DIR / "wordgap.db"
 LOG_DIR = DATA_DIR / "logs"

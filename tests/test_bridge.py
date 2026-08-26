@@ -176,6 +176,21 @@ def test_settings_roundtrip(tmp_path):
     bridge._close()
 
 
+def test_get_agents_reports_all_five(env):
+    bridge, _, _ = env
+    agents = bridge.get_agents()
+    assert [a["agent"] for a in agents] == ["claude-code", "codex", "workbuddy", "pi", "dsh"]
+    for a in agents:
+        assert a["status"] in ("connected", "available", "manual", "missing")
+        assert a["detail"]
+
+
+def test_install_agent_rejects_unknown(env):
+    bridge, _, _ = env
+    assert bridge.install_agent("codex") == {"error": "unsupported_agent"}
+    assert bridge.uninstall_agent("skynet") == {"error": "unsupported_agent"}
+
+
 def test_resume_session_validation(env):
     bridge, _, _ = env
     assert bridge.resume_session("claude-code", "../evil; rm") == {"error": "bad_session_id"}

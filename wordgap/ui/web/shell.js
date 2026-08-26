@@ -171,7 +171,7 @@
     showSettings() {
       const api = shell.api();
       if (!api) return;
-      Promise.all([api.get_prefs(), api.get_settings()]).then(([p, s]) => {
+      Promise.all([api.get_prefs(), api.get_settings(), api.get_agents()]).then(([p, s, agents]) => {
         prefs.auto_pronounce = !!p.auto_pronounce;
         prefs.theme = p.theme || "auto";
         const chip = (group, val, label, on) =>
@@ -198,7 +198,23 @@
           '<div class="set-row"><span class="set-label">每日目标</span>' +
           num("daily_goal", s.daily_goal) + "</div>" +
           '<div class="set-row"><span class="set-label">弹出延迟</span>' +
-          num("popup_delay_sec", s.popup_delay_sec, "s") + "</div>",
+          num("popup_delay_sec", s.popup_delay_sec, "s") + "</div>" +
+          "<h4>Agent 接入</h4>" +
+          (agents || []).map((a) => {
+            let right;
+            if (a.status === "connected") {
+              right = '<span class="ag-ok">' + esc(a.detail) + "</span>" +
+                (a.agent in { "claude-code": 1, workbuddy: 1 }
+                  ? ' <span class="ag-btn" data-agent="' + a.agent + '" data-act="uninstall">移除</span>'
+                  : "");
+            } else if (a.status === "available") {
+              right = '<span class="ag-btn" data-agent="' + a.agent + '" data-act="install">接入</span>';
+            } else {
+              right = '<span class="ov-sub">' + esc(a.detail) + "</span>";
+            }
+            return '<div class="set-row"><span class="set-label">' +
+              esc(shortAgent(a.agent)) + '</span><span class="set-chips">' + right + "</span></div>";
+          }).join(""),
           "settings"
         );
         shell._settingsCache = s;
@@ -212,6 +228,15 @@
         });
         el("overlay").querySelectorAll(".num-val").forEach((n) => {
           n.addEventListener("click", () => shell._editNum(n.getAttribute("data-key")));
+        });
+        el("overlay").querySelectorAll(".ag-btn").forEach((b) => {
+          b.addEventListener("click", () => {
+            const agent = b.getAttribute("data-agent");
+            const isInstall = b.getAttribute("data-act") === "install";
+            b.textContent = "…";
+            const call = isInstall ? api.install_agent(agent) : api.uninstall_agent(agent);
+            call.then(() => shell.showSettings());
+          });
         });
       });
     },
