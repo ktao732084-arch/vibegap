@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from wordgap.daemon.codex_watcher import CodexWatcher
+from vibegap.daemon.codex_watcher import CodexWatcher
 
 NOW = datetime(2026, 8, 26, 10, 0, 0)
 SID = "01a01cca-2d01-7453-a9b1-9697616211d6"

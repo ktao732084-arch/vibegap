@@ -1,4 +1,4 @@
-# WordGap — AI Agent 等待间隙背单词工具 设计文档
+# VibeGap — AI Agent 等待间隙背单词工具 设计文档
 
 > 版本:v0.1(设计稿)  日期:2026-08-25  状态:待评审,未开工
 >
@@ -76,17 +76,17 @@
 | 存储 | SQLite(stdlib `sqlite3`) | 单文件、零依赖、事务够用 |
 | Adapter 脚本 | PowerShell(.ps1)为主 | Windows 平台;**禁止 .bat 含中文**(见 §7) |
 | 测试 | pytest + pytest-cov | 核心逻辑(store/状态机)覆盖 ≥80% |
-| 打包 | 暂不打包,`python -m wordgap` 启动 | MVP 阶段不折腾 pyinstaller |
+| 打包 | 暂不打包,`python -m vibegap` 启动 | MVP 阶段不折腾 pyinstaller |
 
 ### 2.2 目录结构
 
 ```
-wordgap/
+vibegap/
 ├── spec.md                  # 本文档
 ├── README.md
 ├── pyproject.toml
-├── wordgap/
-│   ├── __main__.py          # python -m wordgap 入口:启动 daemon + UI
+├── vibegap/
+│   ├── __main__.py          # python -m vibegap 入口:启动 daemon + UI
 │   ├── config.py            # 全部常量与用户配置(唯一允许出现"魔法数字"的文件)
 │   ├── daemon/
 │   │   ├── app.py           # FastAPI 路由(仅路由,不含业务逻辑,<150 行)
@@ -119,7 +119,7 @@ wordgap/
 │       │   ├── notify.ps1
 │       │   └── log_watcher.py  # sessions JSONL 监听(检测"开始",daemon 内加载)
 │       ├── pi/
-│       │   └── wordgap.ts   # pi extension:turn_start / agent_end → HTTP POST
+│       │   └── vibegap.ts   # pi extension:turn_start / agent_end → HTTP POST
 │       └── workbuddy/
 │           └── install.py   # 复用 claude_code 的钩子格式,写 ~/.workbuddy-ai/settings.json
 ├── dicts/                   # 内置词书(qwerty-learner JSON 原格式)
@@ -136,7 +136,7 @@ wordgap/
 
 ## 3. 数据模型(Store 层)
 
-数据库文件:`%USERPROFILE%\.wordgap\wordgap.db`。全部时间戳存 ISO8601 本地时间字符串。
+数据库文件:`%USERPROFILE%\.vibegap\vibegap.db`。全部时间戳存 ISO8601 本地时间字符串。
 
 ```sql
 -- 词书。words_json 为 qwerty-learner 原格式数组:
@@ -299,9 +299,9 @@ CREATE TABLE kv (
 | `Notification`(权限请求/空闲提醒) | `attention` |
 
 - 钩子命令为一行裸 curl(Windows 10+ 自带,启动 ~50ms;PowerShell 方案冷启动实测 2.4s,弃用):
-  `curl.exe -s -o nul -m 1 -X POST --data-binary @- http://127.0.0.1:<port>/hook/<agent>/<event>?src=wordgap`
+  `curl.exe -s -o nul -m 1 -X POST --data-binary @- http://127.0.0.1:<port>/hook/<agent>/<event>?src=vibegap`
   stdin 的 hook JSON 原样透传,daemon 侧解析 session_id(`POST /hook/{agent}/{event}`)。
-  URL 用路径参数、无 `&` 无引号,任何 shell 下免转义;`?src=wordgap` 兼作安装器识别标记。
+  URL 用路径参数、无 `&` 无引号,任何 shell 下免转义;`?src=vibegap` 兼作安装器识别标记。
 - `notify.ps1` 保留在仓库作为无 curl 环境的后备方案(stdin 读取与 HTTP 均 1s 有界)。
 - `install.py` 职责:**merge** 进现有 settings.json(绝不覆盖用户已有 hooks),写入前备份原文件,
   提供 `--uninstall` 精确移除自己写入的条目。
@@ -323,7 +323,7 @@ CREATE TABLE kv (
 
 ### 5.3 pi(M4)
 
-机制:官方 extension。`wordgap.ts` 注册 `pi.on('turn_start')` → `running`,
+机制:官方 extension。`vibegap.ts` 注册 `pi.on('turn_start')` → `running`,
 `pi.on('agent_end')` → `done`,fetch POST 到 daemon,1s 超时。安装 = 复制到 pi 的 extensions 目录。
 
 ### 5.4 dsh / DeepSeek Harness(M4)
@@ -337,7 +337,7 @@ CREATE TABLE kv (
   pre-step / turn-end 等;若 bridge 覆盖不全,写一个原生 dsh 插件监听 turn 开始/结束 → HTTP POST。
 - 生态调研结论(2026-08):dsh 插件生态(awesome-deepseek-harness / dsh-plugin topic)中
   **没有**背单词/flashcard 类插件,通知类只有 dsh-auto-continue、dsh-web-attention-badge 等;
-  WordGap 若发原生插件属生态空白。
+  VibeGap 若发原生插件属生态空白。
 
 ### 5.5 WorkBuddy(M4)
 
@@ -455,13 +455,13 @@ DAEMON_PORT = 8765
 ADAPTER_TIMEOUT_SEC = 1   # 钩子上报超时
 ```
 
-用户可用 `~/.wordgap/config.json` 覆盖(启动时 merge,非法值回退默认并警告)。
+用户可用 `~/.vibegap/config.json` 覆盖(启动时 merge,非法值回退默认并警告)。
 
 ### 7.7 错误处理与日志
 
 - 统一 `logging`,禁止 `print`(安装脚本对用户的提示除外)。
 - 分级约定:DEBUG=状态机转移明细;INFO=弹出/收起/导入/安装;WARNING=降级(如 codex 日志解析失败);ERROR=异常。
-- daemon 日志写 `~/.wordgap/logs/daemon.log`,按天轮转保留 7 天。
+- daemon 日志写 `~/.vibegap/logs/daemon.log`,按天轮转保留 7 天。
 - 禁止裸 `except`;捕获必须指明异常类型并记日志。**唯一例外**:adapter 钩子脚本允许 catch-all——
   它的最高使命是"绝不拖累 agent",任何异常静默吞掉、1s 超时、退出码 0。
 - UI 侧 bridge 调用失败显示"连接丢失"占位,不崩窗。

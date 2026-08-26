@@ -46,7 +46,7 @@ def main() -> None:
             failed.append(target)
     if failed:
         sys.exit(f"ERROR: failed to fetch {failed}; check network or download manually.")
-    print("done. run `python -m wordgap` to import on first start.")
+    print("done. run `python -m vibegap` to import on first start.")
 
 
 if __name__ == "__main__":

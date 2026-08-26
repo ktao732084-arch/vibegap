@@ -1,0 +1,5 @@
+# dsh-vibegap bundle patch: one host-side roster row.
+# Format verified against dsh-web-attention-badge (insert list of {id, name}).
+- insert:
+    - id: vibegap-bridge
+      name: 'dsh-vibegap'

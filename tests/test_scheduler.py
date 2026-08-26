@@ -1,8 +1,8 @@
 """UI 调度状态机单测(虚拟时钟)。"""
 from datetime import datetime, timedelta
 
-from wordgap.daemon.events import Agent, AgentFinished, EventKind
-from wordgap.daemon.scheduler import (
+from vibegap.daemon.events import Agent, AgentFinished, EventKind
+from vibegap.daemon.scheduler import (
     INITIAL_SCHEDULER,
     ClearBanner,
     HideWindow,
@@ -151,7 +151,7 @@ def test_escape_suppresses_rearm_while_same_sessions_running():
 
 
 def test_new_running_event_clears_suppression():
-    from wordgap.daemon.scheduler import on_new_running_event
+    from vibegap.daemon.scheduler import on_new_running_event
 
     state, _ = on_escape(_showing())
     state, _ = on_new_running_event(state)  # 用户又提了问

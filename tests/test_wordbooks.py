@@ -3,8 +3,8 @@ import json
 
 import pytest
 
-from wordgap.store.db import connect
-from wordgap.store.wordbooks import (
+from vibegap.store.db import connect
+from vibegap.store.wordbooks import (
     WordbookError,
     get_current,
     get_words,

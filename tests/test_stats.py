@@ -4,16 +4,16 @@ from datetime import date, datetime
 
 import pytest
 
-from wordgap.config import Settings, load_settings
-from wordgap.store.db import connect
-from wordgap.store.progress import commit_word
-from wordgap.store.stats import (
+from vibegap.config import Settings, load_settings
+from vibegap.store.db import connect
+from vibegap.store.progress import commit_word
+from vibegap.store.stats import (
     add_word_to_session,
     end_session,
     start_session,
     today_stats,
 )
-from wordgap.store.wordbooks import import_wordbook
+from vibegap.store.wordbooks import import_wordbook
 
 NOW = datetime(2026, 8, 25, 10, 0, 0)
 

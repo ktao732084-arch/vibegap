@@ -2,9 +2,9 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from wordgap.config import Settings
-from wordgap.daemon.app import create_app
-from wordgap.daemon.runtime import Runtime
+from vibegap.config import Settings
+from vibegap.daemon.app import create_app
+from vibegap.daemon.runtime import Runtime
 from tests.test_runtime import FakeClock, FakeNotifier
 
 

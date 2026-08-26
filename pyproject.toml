@@ -1,5 +1,5 @@
 [project]
-name = "wordgap"
+name = "vibegap"
 version = "0.3.0"
 description = "Vocabulary flashcards that auto-appear while your AI coding agent is running"
 requires-python = ">=3.11"
@@ -7,11 +7,11 @@ license = { text = "MIT" }
 dependencies = ["fastapi", "uvicorn", "pywebview", "httpx", "pydantic"]
 
 [project.scripts]
-wordgap = "wordgap.__main__:main"
+vibegap = "vibegap.__main__:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["wordgap"]
-omit = ["wordgap/__main__.py", "wordgap/ui/*", "wordgap/adapters/*"]
+source = ["vibegap"]
+omit = ["vibegap/__main__.py", "vibegap/ui/*", "vibegap/adapters/*"]

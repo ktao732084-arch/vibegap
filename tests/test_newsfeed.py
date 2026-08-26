@@ -1,7 +1,7 @@
 """NewsFeed 缓存与降级单测(fetcher 注入,不碰真网)。"""
 from datetime import datetime, timedelta
 
-from wordgap.daemon.newsfeed import NewsFeed, NewsItem, parse_items
+from vibegap.daemon.newsfeed import NewsFeed, NewsItem, parse_items
 
 import pytest
 

@@ -1,5 +1,0 @@
-# dsh-wordgap bundle patch: one host-side roster row.
-# Format verified against dsh-web-attention-badge (insert list of {id, name}).
-- insert:
-    - id: wordgap-bridge
-      name: 'dsh-wordgap'

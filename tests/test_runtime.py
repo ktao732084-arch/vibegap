@@ -1,9 +1,9 @@
 """Runtime 外壳集成测试:假时钟 + 假通知器,验证事件→效果全链路。"""
 from datetime import datetime, timedelta
 
-from wordgap.config import Settings
-from wordgap.daemon.events import Agent, AgentEvent, AgentFinished, EventKind
-from wordgap.daemon.runtime import Runtime
+from vibegap.config import Settings
+from vibegap.daemon.events import Agent, AgentEvent, AgentFinished, EventKind
+from vibegap.daemon.runtime import Runtime
 
 T0 = datetime(2026, 8, 25, 10, 0, 0)
 SETTINGS = Settings(popup_delay_sec=18, summary_linger_sec=2, session_ttl_min=30)

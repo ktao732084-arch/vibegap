@@ -3,15 +3,15 @@ from datetime import datetime
 
 import pytest
 
-from wordgap.store.db import connect
-from wordgap.store.progress import (
+from vibegap.store.db import connect
+from vibegap.store.progress import (
     commit_word,
     get_next_word,
     get_summary,
     seeded_order,
     set_mode,
 )
-from wordgap.store.wordbooks import WordbookError, import_wordbook
+from vibegap.store.wordbooks import WordbookError, import_wordbook
 
 WORDS = [{"name": f"word{i:02d}", "trans": [f"释义{i}"]} for i in range(10)]
 NOW = datetime(2026, 8, 25, 10, 0, 0)

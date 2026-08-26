@@ -1,8 +1,8 @@
 """会话状态机单测。"""
 from datetime import datetime, timedelta
 
-from wordgap.daemon.events import Agent, AgentEvent, AgentFinished, EventKind
-from wordgap.daemon.sessions import (
+from vibegap.daemon.events import Agent, AgentEvent, AgentFinished, EventKind
+from vibegap.daemon.sessions import (
     EMPTY_SESSIONS,
     any_running,
     cleanup_expired,

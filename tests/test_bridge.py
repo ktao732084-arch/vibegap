@@ -3,12 +3,12 @@ from datetime import timedelta
 
 import pytest
 
-from wordgap.config import Settings
-from wordgap.daemon.newsfeed import NewsFeed, NewsItem
-from wordgap.daemon.runtime import Runtime
-from wordgap.store.db import connect
-from wordgap.store.wordbooks import import_wordbook, set_current
-from wordgap.ui.bridge import open_bridge
+from vibegap.config import Settings
+from vibegap.daemon.newsfeed import NewsFeed, NewsItem
+from vibegap.daemon.runtime import Runtime
+from vibegap.store.db import connect
+from vibegap.store.wordbooks import import_wordbook, set_current
+from vibegap.ui.bridge import open_bridge
 from tests.test_runtime import FakeClock, FakeNotifier
 
 WORDS = [{"name": f"word{i}", "trans": [f"释义{i}"], "usphone": "x"} for i in range(5)]
@@ -87,7 +87,7 @@ def test_peek_word_browsing(env):
 
 def test_book_switching(env):
     bridge, _, _ = env
-    from wordgap.store.db import connect as _connect
+    from vibegap.store.db import connect as _connect
     books = bridge.list_books()
     assert books[0]["current"] is True
     assert bridge.set_book(9999) == {"error": "wordbook 9999 not found"}
@@ -119,7 +119,7 @@ def test_daily_goal_in_progress(env):
 
 def test_get_state_session_counts_and_cwd(env):
     bridge, runtime, _ = env
-    from wordgap.daemon.events import Agent, AgentEvent, EventKind
+    from vibegap.daemon.events import Agent, AgentEvent, EventKind
 
     runtime.handle_event(
         AgentEvent(Agent.CODEX, "a", EventKind.RUNNING, ts=None, cwd="E:/proj")
@@ -146,14 +146,14 @@ def test_prefs_roundtrip(env):
 
 
 def test_settings_roundtrip(tmp_path):
-    from wordgap.config import Settings
-    from wordgap.daemon.newsfeed import NewsFeed
-    from wordgap.daemon.runtime import Runtime
-    from wordgap.ui.bridge import Bridge
+    from vibegap.config import Settings
+    from vibegap.daemon.newsfeed import NewsFeed
+    from vibegap.daemon.runtime import Runtime
+    from vibegap.ui.bridge import Bridge
     import json as _json
 
     db_path = tmp_path / "t.db"
-    from wordgap.store.db import connect as _connect
+    from vibegap.store.db import connect as _connect
     conn = _connect(db_path)
     book = import_wordbook(conn, "t", WORDS, mode="shuffled", seed=1)
     set_current(conn, book.id)
@@ -207,7 +207,7 @@ def test_resume_session_validation(env):
 
 def test_get_state_running_agents(env):
     bridge, runtime, _ = env
-    from wordgap.daemon.events import Agent, AgentEvent, EventKind
+    from vibegap.daemon.events import Agent, AgentEvent, EventKind
 
     assert bridge.get_state()["running_agents"] == []
     runtime.handle_event(AgentEvent(Agent.CODEX, "a", EventKind.RUNNING, ts=None))
@@ -226,7 +226,7 @@ def test_escape_drives_runtime(env):
 
 def test_commit_word_during_soft_close_reaches_summary(env):
     bridge, runtime, _ = env
-    from wordgap.daemon.events import Agent, AgentEvent, EventKind
+    from vibegap.daemon.events import Agent, AgentEvent, EventKind
 
     runtime.handle_event(AgentEvent(Agent.CODEX, "s", EventKind.RUNNING, ts=None))
     runtime.hotkey_toggle()  # 直接显示

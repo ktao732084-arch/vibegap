@@ -7,7 +7,7 @@ import pytest
 
 _INSTALL_PATH = (
     Path(__file__).resolve().parent.parent
-    / "wordgap" / "adapters" / "claude_code" / "install.py"
+    / "vibegap" / "adapters" / "claude_code" / "install.py"
 )
 spec = importlib.util.spec_from_file_location("cc_install", _INSTALL_PATH)
 cc_install = importlib.util.module_from_spec(spec)
@@ -25,7 +25,7 @@ def test_install_into_empty_settings():
     stop_cmd = result["hooks"]["Stop"][0]["hooks"][0]["command"]
     assert stop_cmd.startswith("curl.exe ")
     assert "/hook/claude-code/done" in stop_cmd
-    assert "src=wordgap" in stop_cmd
+    assert "src=vibegap" in stop_cmd
     assert '"' not in stop_cmd and "&" not in stop_cmd  # 任何 shell 下免转义
 
 
@@ -39,7 +39,7 @@ def test_install_preserves_existing_user_hooks():
     stop_matchers = result["hooks"]["Stop"]
     commands = [h["command"] for m in stop_matchers for h in m["hooks"]]
     assert "my-own-linter.exe" in commands
-    assert any("wordgap" in c.lower() for c in commands)
+    assert any("vibegap" in c.lower() for c in commands)
     assert settings["hooks"]["Stop"] == [USER_HOOK]  # 入参未被修改
 
 
