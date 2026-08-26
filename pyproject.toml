@@ -1,8 +1,13 @@
 [project]
 name = "wordgap"
-version = "0.1.0"
+version = "0.3.0"
 description = "Vocabulary flashcards that auto-appear while your AI coding agent is running"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["fastapi", "uvicorn", "pywebview", "httpx", "pydantic"]
+
+[project.scripts]
+wordgap = "wordgap.__main__:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,3 +1,6 @@
+# 词库不随仓库分发(scripts/fetch_dicts.py 按需下载,来源 qwerty-learner)
+dicts/*.json
+
 __pycache__/
 *.pyc
 .coverage
