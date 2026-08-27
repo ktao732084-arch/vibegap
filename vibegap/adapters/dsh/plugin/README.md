@@ -8,14 +8,22 @@ VibeGap 的 DeepSeek Harness 原生插件。Agent 持续运行 18 秒后，dsh w
 
 ## 安装
 
-公开安装(发布镜像仓库 [dsh-vibegap](https://github.com/ktao732084-arch/dsh-vibegap)):
+从 npm 安装：
+
+```bash
+dsh plugin --profile web add dsh-vibegap
+dsh web
+```
+
+也可以从发布镜像仓库
+[`dsh-vibegap`](https://github.com/ktao732084-arch/dsh-vibegap) 安装：
 
 ```bash
 dsh plugin --profile web add "github:ktao732084-arch/dsh-vibegap#main"
 dsh web
 ```
 
-本地开发安装：
+本地开发使用 link 安装：
 
 ```bash
 dsh plugin --profile web add link:<仓库绝对路径>/vibegap/adapters/dsh/plugin

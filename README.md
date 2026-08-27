@@ -30,7 +30,7 @@ python -m vibegap                    # 启动 daemon + 悬浮窗
 ### DSH 原生插件(跨平台,无需 Python)
 
 ```bash
-dsh plugin --profile web add https://github.com/ktao732084-arch/vibegap/releases/download/dsh-vibegap-v0.1.0/dsh-vibegap-0.1.0.tgz
+dsh plugin --profile web add dsh-vibegap
 dsh web
 ```
 
