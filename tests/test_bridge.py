@@ -197,14 +197,6 @@ def test_install_agent_rejects_unknown(env):
     assert bridge.uninstall_agent("skynet") == {"error": "unsupported_agent"}
 
 
-def test_resume_session_validation(env):
-    bridge, _, _ = env
-    assert bridge.resume_session("claude-code", "../evil; rm") == {"error": "bad_session_id"}
-    assert bridge.resume_session("claude-code", "x") == {"error": "bad_session_id"}
-    assert bridge.resume_session("workbuddy", "abcd-1234") == {"error": "unsupported_agent"}
-    # 合法参数不真的拉起终端(仅在真机手测),这里只验证白名单逻辑
-
-
 def test_get_state_running_agents(env):
     bridge, runtime, _ = env
     from vibegap.daemon.events import Agent, AgentEvent, EventKind

@@ -111,8 +111,6 @@ body {
 .ov-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ov-sub { color: var(--ink-2); font-size: 11px; }
 .ov-cur { color: var(--good); font-weight: 700; }
-.ov-act { color: var(--accent); font-size: 11px; cursor: pointer; flex-shrink: 0; }
-.ov-act:hover { text-decoration: underline; }
 .ag-ok { color: var(--good); font-size: 11px; }
 .ag-btn {
   color: var(--accent); font-size: 11px; cursor: pointer;
