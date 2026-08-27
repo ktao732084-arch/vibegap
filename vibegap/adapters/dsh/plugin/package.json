@@ -1,10 +1,20 @@
 {
   "name": "dsh-vibegap",
   "version": "0.1.0",
-  "description": "Report agent turn lifecycle to the local VibeGap daemon (vocab flashcards while your agent runs)",
+  "description": "Self-contained vocabulary flashcards for DeepSeek Harness web sessions",
   "main": "lib/index.js",
-  "exports": { ".": "./lib/index.js" },
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
   "keywords": ["dsh-plugin", "vibegap", "vocabulary", "productivity"],
   "license": "MIT",
-  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-client-runtime"]
+    }
+  }
 }
