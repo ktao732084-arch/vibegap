@@ -14,6 +14,7 @@ from pathlib import Path
 
 from vibegap.config import (
     CLAUDE_SETTINGS_PATH,
+    CODEX_HOOKS_PATH,
     CODEX_SESSIONS_DIR,
     CONFIG_PATH,
     DSH_DIR,
@@ -38,6 +39,7 @@ _HOOK_TARGETS = {
     "workbuddy": WORKBUDDY_SETTINGS_PATH,
 }
 _INSTALLER = Path(__file__).resolve().parents[1] / "adapters" / "claude_code" / "install.py"
+_CODEX_INSTALLER = Path(__file__).resolve().parents[1] / "adapters" / "codex" / "install.py"
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +102,28 @@ class Bridge:
             "total": summary.total,
             "round_completed": summary.is_round_completed,
         }
+
+    def skip_current_and_escape(self, typo_count: int = 0) -> dict:
+        """Esc 跳过当前词后隐藏;即使词书不可用也保证执行逃生。"""
+        try:
+            with self._lock:
+                book_id = wordbooks.get_current(self._conn)
+                if book_id is None:
+                    return {"error": "no_wordbook"}
+                try:
+                    summary = progress.commit_word(
+                        self._conn, book_id, "skip", typo_count=int(typo_count)
+                    )
+                except WordbookError as exc:
+                    logger.error("skip_current_and_escape failed: %s", exc)
+                    return {"error": str(exc)}
+            return {
+                "cursor": summary.cursor,
+                "total": summary.total,
+                "round_completed": summary.is_round_completed,
+            }
+        finally:
+            self._runtime.escape()
 
     def get_progress(self) -> dict:
         """状态栏用的进度概览(含每日目标)。"""
@@ -245,11 +269,7 @@ class Bridge:
         """设置面板 Agent 区块:每个 agent 的检测/接入状态。"""
         return [
             _hook_agent_status("claude-code", CLAUDE_SETTINGS_PATH),
-            {
-                "agent": "codex",
-                "status": "connected" if CODEX_SESSIONS_DIR.is_dir() else "missing",
-                "detail": "自动 · 日志监听" if CODEX_SESSIONS_DIR.is_dir() else "未检测到",
-            },
+            _codex_agent_status(),
             _hook_agent_status("workbuddy", WORKBUDDY_SETTINGS_PATH),
             {
                 "agent": "pi",
@@ -275,17 +295,26 @@ class Bridge:
         import subprocess
         import sys
 
-        target = _HOOK_TARGETS.get(str(agent))
+        agent = str(agent)
+        if agent == "codex":
+            target = CODEX_HOOKS_PATH
+            installer = _CODEX_INSTALLER
+            path_flag = "--hooks"
+        else:
+            target = _HOOK_TARGETS.get(agent)
+            installer = _INSTALLER
+            path_flag = "--settings"
         if target is None:
             return {"error": "unsupported_agent"}
         if not target.parent.is_dir():
             return {"error": "not_detected"}
         cmd = [
-            sys.executable, str(_INSTALLER),
-            "--settings", str(target),
-            "--agent", str(agent),
+            sys.executable, str(installer),
+            path_flag, str(target),
             "--port", str(self._settings.daemon_port),
         ]
+        if agent != "codex":
+            cmd.extend(["--agent", agent])
         if uninstall:
             cmd.append("--uninstall")
         try:
@@ -407,9 +436,22 @@ def _hook_agent_status(name: str, settings_path: Path) -> dict:
         content = settings_path.read_text(encoding="utf-8", errors="ignore").lower()
     except OSError:
         content = ""
-    if "vibegap" in content:
+    if "vibegap" in content or "wordgap" in content:
         return {"agent": name, "status": "connected", "detail": "已接入"}
     return {"agent": name, "status": "available", "detail": "可接入"}
+
+
+def _codex_agent_status() -> dict:
+    """Codex 优先使用官方 Hooks,日志 watcher 始终作为启动恢复兜底。"""
+    if not CODEX_SESSIONS_DIR.parent.is_dir():
+        return {"agent": "codex", "status": "missing", "detail": "未检测到"}
+    try:
+        content = CODEX_HOOKS_PATH.read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        content = ""
+    if "vibegap" in content or "wordgap" in content:
+        return {"agent": "codex", "status": "connected", "detail": "Hooks + 日志恢复"}
+    return {"agent": "codex", "status": "available", "detail": "可接入官方 Hooks"}
 
 
 def open_bridge(

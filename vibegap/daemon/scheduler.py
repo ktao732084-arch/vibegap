@@ -146,4 +146,5 @@ def on_hotkey_toggle(
     """全局热键:HIDDEN/ARMED → 立即显示;其余 → 隐藏。与 agent 状态无关。"""
     if state.phase in (Phase.HIDDEN, Phase.ARMED):
         return SchedulerState(phase=Phase.SHOWING), [ShowWindow()]
-    return SchedulerState(), [HideWindow()]
+    # 手动隐藏和 Esc 语义一致:同一批仍在运行的会话不能在下个 tick 又弹回。
+    return SchedulerState(suppressed=True), [HideWindow()]

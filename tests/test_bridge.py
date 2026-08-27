@@ -193,7 +193,7 @@ def test_get_agents_reports_all_five(env):
 
 def test_install_agent_rejects_unknown(env):
     bridge, _, _ = env
-    assert bridge.install_agent("codex") == {"error": "unsupported_agent"}
+    assert bridge.install_agent("skynet") == {"error": "unsupported_agent"}
     assert bridge.uninstall_agent("skynet") == {"error": "unsupported_agent"}
 
 
@@ -214,6 +214,16 @@ def test_escape_drives_runtime(env):
     runtime.hotkey_toggle()  # SHOWING
     bridge.escape()
     assert runtime.snapshot().phase == "HIDDEN"
+
+
+def test_escape_skips_current_word_before_hiding(env):
+    bridge, runtime, _ = env
+    runtime.hotkey_toggle()
+    result = bridge.skip_current_and_escape(typo_count=2)
+    assert result["cursor"] == 1
+    assert bridge.next_word()["name"] == "word1"
+    assert runtime.snapshot().phase == "HIDDEN"
+    assert bridge.get_review()[0]["name"] == "word0"
 
 
 def test_commit_word_during_soft_close_reaches_summary(env):

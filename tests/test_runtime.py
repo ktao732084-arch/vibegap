@@ -1,5 +1,5 @@
 """Runtime 外壳集成测试:假时钟 + 假通知器,验证事件→效果全链路。"""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from vibegap.config import Settings
 from vibegap.daemon.events import Agent, AgentEvent, AgentFinished, EventKind
@@ -129,6 +129,21 @@ def test_escape_and_hotkey_paths():
     assert notifier.calls[-1] == ("hide_window",)
 
 
+def test_duplicate_running_event_does_not_break_manual_hide_suppression():
+    runtime, _, clock = _make()
+    running = _event(EventKind.RUNNING, clock=clock)
+    runtime.handle_event(running)
+    runtime.hotkey_toggle()  # ARMED -> SHOWING
+    runtime.hotkey_toggle()  # SHOWING -> HIDDEN + suppressed
+    runtime.handle_event(running)  # 同一次任务由 Hook/watcher 重复上报
+    clock.advance(60)
+    runtime.tick()
+    assert runtime.snapshot().phase == "HIDDEN"
+    runtime.handle_event(_event(EventKind.DONE, clock=clock))
+    runtime.handle_event(_event(EventKind.RUNNING, clock=clock))
+    assert runtime.snapshot().phase == "ARMED"  # 真正的新一轮仍会解除抑制
+
+
 def test_slow_notifier_does_not_block_event_handling():
     # review HIGH-1 回归锁:效果在锁外执行,慢通知器(如 toast 子进程)不得阻塞钩子事件
     import threading
@@ -154,12 +169,52 @@ def test_slow_notifier_does_not_block_event_handling():
     assert runtime.snapshot().phase == "SOFT_CLOSING"
 
 
+def test_concurrent_effects_preserve_state_transition_order():
+    import threading
+
+    entered = threading.Event()
+    release = threading.Event()
+
+    class BlockingNotifier(FakeNotifier):
+        def show_window(self):
+            entered.set()
+            assert release.wait(timeout=2)
+            super().show_window()
+
+    clock = FakeClock()
+    notifier = BlockingNotifier()
+    runtime = Runtime(settings=SETTINGS, notifier=notifier, clock=clock)
+    runtime.handle_event(_event(EventKind.RUNNING, clock=clock))
+    clock.advance(20)
+    tick_thread = threading.Thread(target=runtime.tick)
+    tick_thread.start()
+    assert entered.wait(timeout=2)
+    runtime.handle_event(_event(EventKind.DONE, clock=clock))
+    assert notifier.calls == []  # banner 已入队,不能越过仍在执行的 show
+    release.set()
+    tick_thread.join(timeout=2)
+    assert notifier.calls == [
+        ("show_window",),
+        ("show_banner", "claude-code", "done"),
+    ]
+
+
 def test_event_without_ts_uses_injected_clock():
     runtime, _, clock = _make()
     runtime.handle_event(AgentEvent(Agent.CLAUDE_CODE, "s1", EventKind.RUNNING, ts=None))
     clock.advance(31 * 60)
     runtime.tick()  # 若 ts 落在假时钟上,TTL 清理应生效
     assert runtime.snapshot().session_count == 0
+
+
+def test_aware_event_timestamp_with_naive_clock_does_not_crash():
+    runtime, _, clock = _make()
+    local_timezone = datetime.now().astimezone().tzinfo or timezone.utc
+    aware = T0.replace(tzinfo=local_timezone)
+    runtime.handle_event(_event(EventKind.RUNNING, ts=aware))
+    clock.advance(1)
+    runtime.tick()
+    assert runtime.snapshot().session_count == 1
 
 
 def test_auto_popup_off_never_arms_but_hotkey_still_works():

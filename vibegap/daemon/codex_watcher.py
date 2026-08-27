@@ -5,7 +5,8 @@
   event_msg.payload.type == task_started               -> running
   event_msg.payload.type in (task_complete, turn_aborted) -> done
 session_id 取自文件名 uuid,cwd 取自首行 session_meta。
-守护进程启动时已存在的内容不回放(offset 置为文件尾),只处理之后追加的行。
+守护进程启动时会反向查找每个文件最后一条生命周期事件,只恢复仍在运行的
+任务;随后 offset 置为文件尾,继续增量处理新增内容。
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 _RUNNING_TYPES = ("task_started",)
 _DONE_TYPES = ("task_complete", "turn_aborted")
 _SID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
+_REVERSE_READ_BYTES = 64 * 1024
 
 # emit(session_id, kind, cwd),kind 为 "running" | "done"
 EmitFn = Callable[[str, str, str], None]
@@ -80,33 +82,78 @@ class CodexWatcher:
             self._handle_line(path, raw)
 
     def _register_file(self, path: Path, size: int, replay: bool) -> None:
-        """首次见到的文件:读首行拿 cwd;replay 决定是否从头处理内容。"""
+        """首次见到文件:读取元数据;首轮恢复最终运行态,新文件从头回放。"""
         sid_match = _SID_RE.search(path.name)
-        session_id = sid_match.group(1) if sid_match else path.stem
+        file_session_id = sid_match.group(1) if sid_match else path.stem
+        session_id = file_session_id
         cwd = ""
+        is_subagent = False
         try:
             with path.open("r", encoding="utf-8", errors="ignore") as fh:
                 first = json.loads(fh.readline() or "{}")
             if first.get("type") == "session_meta":
                 payload = first.get("payload") or {}
                 cwd = str(payload.get("cwd", ""))
-                session_id = str(payload.get("session_id") or session_id)
+                source = payload.get("source") or {}
+                is_subagent = isinstance(source, dict) and "subagent" in source
+                if not is_subagent:
+                    session_id = str(payload.get("session_id") or session_id)
         except (OSError, json.JSONDecodeError):
             pass
         self._meta[path] = (session_id, cwd)
         self._offsets[path] = 0 if replay else size
-        logger.info("codex watcher tracking %s (sid=%s)", path.name, session_id[:8])
+        if not replay and self._last_lifecycle(path) == "running":
+            self._emit(session_id, "running", cwd)
+        logger.info(
+            "codex watcher tracking %s (sid=%s, subagent=%s)",
+            path.name,
+            session_id[:8],
+            is_subagent,
+        )
+
+    def _last_lifecycle(self, path: Path) -> str | None:
+        """从文件尾反向查找最近生命周期事件,避免启动时回放整份日志。"""
+        try:
+            with path.open("rb") as fh:
+                position = fh.seek(0, 2)
+                carry = b""
+                while position > 0:
+                    read_size = min(_REVERSE_READ_BYTES, position)
+                    position -= read_size
+                    fh.seek(position)
+                    carry = fh.read(read_size) + carry
+                    lines = carry.split(b"\n")
+                    carry = lines[0]
+                    for raw in reversed(lines[1:]):
+                        kind = _lifecycle_kind(raw)
+                        if kind is not None:
+                            return kind
+                return _lifecycle_kind(carry)
+        except OSError as exc:
+            logger.debug("codex watcher recovery failed %s: %s", path.name, exc)
+            return None
 
     def _handle_line(self, path: Path, raw: bytes) -> None:
-        try:
-            record = json.loads(raw.decode("utf-8", errors="ignore"))
-        except json.JSONDecodeError:
+        kind = _lifecycle_kind(raw)
+        if kind is None:
             return
-        if record.get("type") != "event_msg":
-            return
-        payload_type = (record.get("payload") or {}).get("type")
         session_id, cwd = self._meta.get(path, (path.stem, ""))
-        if payload_type in _RUNNING_TYPES:
-            self._emit(session_id, "running", cwd)
-        elif payload_type in _DONE_TYPES:
-            self._emit(session_id, "done", cwd)
+        self._emit(session_id, kind, cwd)
+
+
+def _lifecycle_kind(raw: bytes) -> str | None:
+    """解析单行 Codex 日志,仅返回 VibeGap 关心的生命周期状态。"""
+    if not any(token.encode() in raw for token in _RUNNING_TYPES + _DONE_TYPES):
+        return None
+    try:
+        record = json.loads(raw.decode("utf-8", errors="ignore"))
+    except json.JSONDecodeError:
+        return None
+    if record.get("type") != "event_msg":
+        return None
+    payload_type = (record.get("payload") or {}).get("type")
+    if payload_type in _RUNNING_TYPES:
+        return "running"
+    if payload_type in _DONE_TYPES:
+        return "done"
+    return None

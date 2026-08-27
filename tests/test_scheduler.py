@@ -187,7 +187,17 @@ def test_hotkey_toggles_show_and_hide():
     assert effects == [ShowWindow()]
     state, effects = on_hotkey_toggle(state)
     assert state.phase is Phase.HIDDEN
+    assert state.suppressed
     assert effects == [HideWindow()]
+
+
+def test_hotkey_hide_does_not_rearm_for_same_running_sessions():
+    state, _ = on_hotkey_toggle(INITIAL_SCHEDULER)
+    state, _ = on_hotkey_toggle(state)
+    state, effects = on_running_changed(state, True, T0)
+    assert state.phase is Phase.HIDDEN
+    assert state.suppressed
+    assert effects == []
 
 
 def test_hotkey_while_armed_shows_immediately():

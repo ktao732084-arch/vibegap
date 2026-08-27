@@ -52,6 +52,8 @@ def reduce_event(
     new_state = _with_session(state, key, info)
     if event.kind is EventKind.RUNNING:
         return new_state, []
+    if existing is not None and not existing.is_running:
+        return new_state, []  # Hook + 日志 watcher 可能重复上报同一次结束
     return new_state, [AgentFinished(agent=event.agent, kind=event.kind)]
 
 

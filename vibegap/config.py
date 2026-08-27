@@ -45,6 +45,7 @@ DICTS_DIR = Path(__file__).resolve().parent.parent / "dicts"  # 内置词书目�
 # 各 agent 探测/接入路径(设置面板 Agent 区块 + codex 日志监听)
 CLAUDE_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 CODEX_SESSIONS_DIR = Path.home() / ".codex" / "sessions"
+CODEX_HOOKS_PATH = Path.home() / ".codex" / "hooks.json"
 PI_DIR = Path.home() / ".pi"
 DSH_DIR = Path.home() / ".dsh"
 WORKBUDDY_SETTINGS_PATH = Path.home() / ".workbuddy-ai" / "settings.json"

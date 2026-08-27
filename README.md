@@ -12,7 +12,7 @@
 
 - **自动生命周期**:提交任务约 18 秒后弹出(快任务不打扰);agent 完成/等确认时横幅提醒,拼完当前词自动收起
 - **断点续背**:一本词书一个全局游标,换对话、换 agent、重启机器都接着背;顺序/乱序(固定种子)双模式,切换不丢进度
-- **多 agent**:Claude Code(官方 hooks)、Codex(零配置日志监听)、pi / dsh / WorkBuddy(适配模板见 `vibegap/adapters/`)
+- **多 agent**:Claude Code / Codex(官方 Hooks)、pi / dsh / WorkBuddy(适配模板见 `vibegap/adapters/`);Codex 另有日志恢复兜底
 - **会话面板**:按 agent 分组显示各会话的运行中/已完成状态
 - **打字模式**:qwerty-learner 式拼写,音标+发音(有道音源,可关),Tab 看答案(看过即记入错词),←→ 浏览前后词
 - **错词复习 / 每日目标 / AI 新闻轮播条**(卡兹克 [AIHOT](https://aihot.virxact.com) 公开 API)
@@ -27,13 +27,14 @@ python scripts/fetch_dicts.py        # 下载内置词书(CET6 / GRE,来自 qwer
 python -m vibegap                    # 启动 daemon + 悬浮窗
 ```
 
-接入 Claude Code(merge 写入 hooks,自动备份,`--uninstall` 可完全还原):
+接入 Claude Code / Codex(merge 写入 Hooks,自动备份,`--uninstall` 可完全还原):
 
 ```bash
 python vibegap/adapters/claude_code/install.py
+python vibegap/adapters/codex/install.py
 ```
 
-Codex 无需任何配置——检测到 `~/.codex/sessions` 即自动通过日志监听接入。其余 agent 见 `vibegap/adapters/` 下各目录说明,或在悬浮窗 ⚙ 设置 → Agent 接入 里一键操作。
+Codex 安装后请在 `/hooks` 中检查并信任配置。官方 Hooks 负责实时事件,`~/.codex/sessions` 日志监听只负责守护进程重启恢复与降级,不会修改已有 `notify`。其余 agent 见 `vibegap/adapters/` 下各目录说明,或在悬浮窗 ⚙ 设置 → Agent 接入 里一键操作。
 
 ## 架构(30 秒版)
 
@@ -49,7 +50,7 @@ agent 钩子/日志 ──HTTP──▶ daemon(FastAPI :8765)
 ## 开发
 
 ```bash
-python -m pytest -q          # 142 个测试,核心逻辑覆盖率 100%
+python -m pytest -q          # 165 个测试
 ```
 
 工程约束(单文件 ≤500 行、纯函数内核、依赖方向单向等)见 spec.md §7。欢迎 issue / PR。
