@@ -2,7 +2,7 @@
 
 **AI agent 等待间隙的效率小窗** — vibe coding 的间隙(gap)里,不切屏做点有价值的小事。当 Claude Code / Codex 在跑任务时,小窗自动弹出;agent 跑完(或等你确认权限)时提醒并自动收起。第一个面板是背单词:进度全局持久,换对话、换 agent 都接着上次背。小窗是可插拔面板框架,后续会有更多"间隙面板"(消息、资讯、视频……)。
 
-> **EN TL;DR** — A tiny always-on-top mini-window for the gaps in vibe coding: it pops up automatically while your AI coding agent (Claude Code / Codex / pi / dsh / WorkBuddy) is running, and softly closes when the agent finishes or needs your attention. The first panel is vocabulary flashcards with a globally persistent cursor; the window itself is a pluggable panel framework. Windows-only for now. MIT licensed.
+> **EN TL;DR** — A tiny always-on-top mini-window for the gaps in vibe coding: it pops up automatically while your AI coding agent (Claude Code / Codex / pi / dsh / WorkBuddy) is running, and softly closes when the agent finishes or needs your attention. The first panel is vocabulary flashcards with a globally persistent cursor; the window itself is a pluggable panel framework. The desktop app is Windows-only for now; the native DSH web plugin is cross-platform. MIT licensed.
 
 ## 为什么
 
@@ -26,6 +26,17 @@ pip install -e .
 python scripts/fetch_dicts.py        # 下载内置词书(CET6 / GRE,来自 qwerty-learner)
 python -m vibegap                    # 启动 daemon + 悬浮窗
 ```
+
+### DSH 原生插件(跨平台,无需 Python)
+
+```bash
+dsh plugin --profile web add https://github.com/ktao732084-arch/vibegap/releases/download/dsh-vibegap-v0.1.0/dsh-vibegap-0.1.0.tgz
+dsh web
+```
+
+插件可独立保存词库和进度;若本机同时运行 VibeGap 桌面端,会自动共享桌面端的
+当前词书与游标。安装、交互和开发说明见
+[`vibegap/adapters/dsh/plugin/README.md`](vibegap/adapters/dsh/plugin/README.md)。
 
 接入 Claude Code / Codex(merge 写入 Hooks,自动备份,`--uninstall` 可完全还原):
 
