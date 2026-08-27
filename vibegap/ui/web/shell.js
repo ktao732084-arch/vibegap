@@ -190,6 +190,11 @@
           '<div class="set-row"><span class="set-label">自动唤醒(agent 运行时弹出)</span><span class="set-chips">' +
           chip("autopop", "1", "开", !!s.auto_popup) +
           chip("autopop", "0", "关", !s.auto_popup) + "</span></div>" +
+          '<div class="set-row"><span class="set-label">后台常驻</span><span class="set-chips">' +
+          chip("keepalive", "1", "开", !!s.keep_running) +
+          chip("keepalive", "0", "关", !s.keep_running) + "</span></div>" +
+          '<div class="set-row"><span class="set-label">隐藏后退出</span>' +
+          num("idle_exit_min", s.idle_exit_min, "min") + "</div>" +
           '<div class="set-row"><span class="set-label">手动唤醒</span>' +
           '<span class="ov-sub">' + (s.hotkey || "热键不可用(组合键全被占用)") + "</span></div>" +
           '<div class="set-row"><span class="set-label">词书模式(进度保留)</span><span class="set-chips">' +
@@ -282,6 +287,8 @@
         api.set_pref("auto_pronounce", prefs.auto_pronounce).then(() => shell.showSettings());
       } else if (group === "autopop") {
         api.set_setting("auto_popup", val === "1").then(() => shell.showSettings());
+      } else if (group === "keepalive") {
+        api.set_setting("keep_running", val === "1").then(() => shell.showSettings());
       } else if (group === "mode") {
         api.set_book_mode(val).then(() => {
           shell.updateStatus();
@@ -294,12 +301,13 @@
       const api = shell.api();
       const s = shell._settingsCache;
       if (!api || !s) return;
-      const step = key === "daily_goal" ? 10 : 2;
+      const step = key === "daily_goal" ? 10 : (key === "idle_exit_min" ? 1 : 2);
       api.set_setting(key, s[key] + dir * step).then((r) => {
         if (r.ok) {
           s[key] = r.value;
           const node = el("nv-" + key);
-          if (node) node.textContent = r.value + (key === "popup_delay_sec" ? "s" : "");
+          if (node) node.textContent = r.value +
+            (key === "popup_delay_sec" ? "s" : (key === "idle_exit_min" ? "min" : ""));
           shell.updateStatus();
         }
       });

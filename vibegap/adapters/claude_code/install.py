@@ -25,21 +25,14 @@ HOOK_EVENTS = {
     "UserPromptSubmit": "running",
     "Stop": "done",
     "Notification": "attention",
+    "SessionStart": "attached",
+    "SessionEnd": "detached",
 }
 
 
 def build_command(event: str, agent: str, port: int = DEFAULT_PORT) -> str:
-    """生成钩子命令行:一行裸 curl 透传 stdin 到 daemon(~50ms,免 PowerShell 冷启动)。
-
-    URL 用路径参数、无 & 无空格,不需要任何引号/转义,任何 shell 下都安全。
-    daemon 不在时 curl -s 静默失败(非阻塞),不打扰 agent。
-    ?src=vibegap 供 _is_ours 识别本工具写入的条目。
-    """
-    url = f"http://127.0.0.1:{port}/hook/{agent}/{event}?src=vibegap"
-    return (
-        "curl.exe -s -o nul --noproxy 127.0.0.1 --connect-timeout 0.3 -m 1 "
-        f"-X POST --data-binary @- {url}"
-    )
+    """生成瞬时 helper 命令;helper 持有 stdin,失败时可启动并精确重放。"""
+    return f"vibegap-hook --agent {agent} --event {event} --port {port}"
 
 
 def load_settings(path: Path) -> dict:

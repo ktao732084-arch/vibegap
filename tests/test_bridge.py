@@ -184,15 +184,24 @@ def test_settings_roundtrip(tmp_path):
         "popup_delay_sec": 18,
         "daily_goal": 50,
         "auto_popup": True,
+        "idle_exit_min": 10,
+        "keep_running": False,
         "hotkey": "",  # 测试环境不启动热键线程
         "mode": "shuffled",
     }
     assert bridge.set_setting("daily_goal", 80) == {"ok": True, "value": 80}
     assert bridge.set_setting("popup_delay_sec", 999) == {"ok": True, "value": 120}  # 夹到上限
+    assert bridge.set_setting("idle_exit_min", 0) == {"ok": True, "value": 1}
+    assert bridge.set_setting("keep_running", True) == {"ok": True, "value": True}
     assert bridge.set_setting("nope", 1) == {"error": "bad_key"}
     assert bridge.get_settings()["daily_goal"] == 80
     saved = _json.loads(cfg.read_text(encoding="utf-8"))
-    assert saved == {"daily_goal": 80, "popup_delay_sec": 120}  # 持久化到 config.json
+    assert saved == {
+        "daily_goal": 80,
+        "popup_delay_sec": 120,
+        "idle_exit_min": 1,
+        "keep_running": True,
+    }  # 持久化到 config.json
     assert bridge.set_book_mode("sequential") == {"ok": True}
     assert bridge.get_settings()["mode"] == "sequential"
     assert "error" in bridge.set_book_mode("bogus")

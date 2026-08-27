@@ -1,63 +1,23 @@
 """FastAPI 路由:只做协议转换与校验,业务全部在 Runtime(§7.2)。"""
 from __future__ import annotations
 
-import json
 import logging
 import re
 from collections.abc import Awaitable, Callable
-from datetime import datetime  # noqa: F401 - pydantic 模型注解运行时需要
-from typing import Literal, Protocol
 
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import JSONResponse, Response
 
 from vibegap.config import (
     PANEL_ORIGIN_PATTERN,
-    RESULT_FAIL,
-    RESULT_PASS,
-    RESULT_SKIP,
+    SERVICE_ID,
+    SERVICE_PROTOCOL_VERSION,
 )
-
-logger = logging.getLogger(__name__)
-from vibegap.daemon.events import Agent, AgentEvent, EventKind
+from vibegap.daemon.events import Agent, AgentEvent, EventKind, LifecycleKind
+from vibegap.daemon.protocol import EventIn, PanelApi, PanelCommitIn, parse_hook_payload
 from vibegap.daemon.runtime import Runtime
 
-
-class EventIn(BaseModel):
-    """POST /event 请求体。非法枚举值由 pydantic 直接 422。"""
-
-    model_config = ConfigDict(frozen=True)
-
-    agent: Agent
-    session_id: str
-    event: EventKind
-    ts: datetime | None = None
-
-
-class PanelCommitIn(BaseModel):
-    """POST /panel/commit 请求体。"""
-
-    model_config = ConfigDict(frozen=True)
-
-    result: Literal[RESULT_PASS, RESULT_FAIL, RESULT_SKIP]  # 与 config.VALID_RESULTS 同源
-    typo_count: int = Field(default=0, ge=0)
-
-
-class PanelApi(Protocol):
-    """daemon 面板路由所需的最小进度接口。"""
-
-    def next_word(self) -> dict:
-        """读取共享游标指向的单词。"""
-        ...
-
-    def commit_word(self, result: str, typo_count: int = 0) -> dict:
-        """提交结果并推进共享游标。"""
-        ...
-
-    def get_progress(self) -> dict:
-        """读取共享进度。"""
-        ...
+logger = logging.getLogger(__name__)
 
 
 def create_app(runtime: Runtime, panel: PanelApi | None = None) -> FastAPI:
@@ -95,19 +55,22 @@ def _mount_event_routes(app: FastAPI, runtime: Runtime) -> None:
         钩子端因此只需一行 curl,免去 PowerShell 冷启动(实测 2.4s → ~50ms)。
         """
         _reject_browser(request)
-        session_id = "unknown"
-        cwd = ""
-        try:
-            payload = json.loads((await request.body()) or b"{}")
-            if isinstance(payload, dict):
-                session_id = _hook_session_id(payload)
-                if payload.get("cwd"):
-                    cwd = str(payload["cwd"])
-        except json.JSONDecodeError:
-            pass  # 钩子输入畸形不致命:退化为固定 session_id
+        session_id, cwd = parse_hook_payload(await request.body())
         runtime.handle_event(
             AgentEvent(agent=agent, session_id=session_id, kind=event, ts=None, cwd=cwd)
         )
+        return {"ok": True}
+
+    @app.post("/lifecycle/{agent}/{event}")
+    async def lifecycle_hook(
+        request: Request,
+        agent: Agent,
+        event: LifecycleKind,
+    ) -> dict:
+        """接收 SessionStart/SessionEnd,供 Core 判断宿主是否仍在使用。"""
+        _reject_browser(request)
+        session_id, _ = parse_hook_payload(await request.body())
+        runtime.handle_lifecycle(agent, session_id, event)
         return {"ok": True}
 
 
@@ -121,6 +84,8 @@ def _mount_control_routes(app: FastAPI, runtime: Runtime) -> None:
             "phase": snap.phase,
             "session_count": snap.session_count,
             "any_running": snap.is_any_running,
+            "connected_count": snap.connected_count,
+            "connected_agents": list(snap.connected_agents),
         }
 
     @app.post("/toggle")
@@ -132,7 +97,11 @@ def _mount_control_routes(app: FastAPI, runtime: Runtime) -> None:
 
     @app.get("/healthz")
     def healthz() -> dict:
-        return {"ok": True}
+        return {
+            "ok": True,
+            "service": SERVICE_ID,
+            "protocol": SERVICE_PROTOCOL_VERSION,
+        }
 
 
 
@@ -205,11 +174,3 @@ def _reject_browser(request: Request) -> None:
     """带 Origin/Referer 的请求来自浏览器页面(潜在 CSRF),adapter 脚本不会带。"""
     if request.headers.get("origin") or request.headers.get("referer"):
         raise HTTPException(status_code=403, detail="browser requests not allowed")
-
-
-def _hook_session_id(payload: dict) -> str:
-    """为 Codex 子 Agent 使用独立 agent_id,其余事件沿用 session_id。"""
-    event_name = str(payload.get("hook_event_name", ""))
-    if event_name in ("SubagentStart", "SubagentStop") and payload.get("agent_id"):
-        return str(payload["agent_id"])
-    return str(payload.get("session_id") or "unknown")

@@ -31,7 +31,12 @@ from vibegap.store.wordbooks import WordbookError
 _PREF_KEYS = ("auto_pronounce", "theme")  # UI 偏好白名单,kv 表以 pref_ 前缀存储
 _THEMES = ("auto", "light", "dark")
 # 设置面板可改的 config.json 项:key -> (最小值, 最大值)
-_SETTING_LIMITS = {"popup_delay_sec": (5, 120), "daily_goal": (1, 1000)}
+_SETTING_LIMITS = {
+    "popup_delay_sec": (5, 120),
+    "daily_goal": (1, 1000),
+    "idle_exit_min": (1, 240),
+}
+_BOOLEAN_SETTINGS = ("auto_popup", "keep_running")
 
 # 走 Claude-Code 兼容钩子安装器接入的 agent -> settings.json 路径
 _HOOK_TARGETS = {
@@ -338,20 +343,24 @@ class Bridge:
             if book_id is not None:
                 mode = progress.get_summary(self._conn, book_id).mode
         from vibegap.ui import hotkey
+        from vibegap.adapters.windows_hotkey import is_installed as shell_hotkey_installed
 
         return {
             "popup_delay_sec": self._settings.popup_delay_sec,
             "daily_goal": self._settings.daily_goal,
             "auto_popup": self._settings.auto_popup,
-            "hotkey": hotkey.get_active_label() or "",
+            "idle_exit_min": self._settings.idle_exit_min,
+            "keep_running": self._settings.keep_running,
+            "hotkey": hotkey.get_active_label()
+            or ("Ctrl+Alt+W（系统快捷方式）" if shell_hotkey_installed() else ""),
             "mode": mode,
         }
 
     def set_setting(self, key: str, value) -> dict:
         """改设置:写 config.json 持久化 + runtime 热更新。"""
-        if key == "auto_popup":
+        if key in _BOOLEAN_SETTINGS:
             flag = bool(value)
-            self._settings = replace(self._settings, auto_popup=flag)
+            self._settings = replace(self._settings, **{key: flag})
             self._runtime.update_settings(self._settings)
             self._persist_config(key, flag)
             return {"ok": True, "value": flag}

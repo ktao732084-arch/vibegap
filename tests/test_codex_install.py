@@ -21,13 +21,16 @@ USER_HOOK = {
 def test_install_adds_root_and_subagent_lifecycle_hooks():
     result = codex_install.apply_install({})
     assert set(result["hooks"]) == {
+        "SessionStart",
+        "SessionEnd",
         "UserPromptSubmit",
         "Stop",
         "SubagentStart",
         "SubagentStop",
     }
-    assert "/hook/codex/running" in result["hooks"]["SubagentStart"][0]["hooks"][0]["command"]
-    assert "/hook/codex/done" in result["hooks"]["SubagentStop"][0]["hooks"][0]["command"]
+    assert "--agent codex --event running" in result["hooks"]["SubagentStart"][0]["hooks"][0]["command"]
+    assert "--agent codex --event done" in result["hooks"]["SubagentStop"][0]["hooks"][0]["command"]
+    assert "--event attached" in result["hooks"]["SessionStart"][0]["hooks"][0]["command"]
 
 
 def test_install_preserves_user_hooks_and_input():
@@ -35,7 +38,7 @@ def test_install_preserves_user_hooks_and_input():
     result = codex_install.apply_install(document, port=9999)
     commands = [h["command"] for m in result["hooks"]["Stop"] for h in m["hooks"]]
     assert "my-own-hook.exe" in commands
-    assert any(":9999/hook/codex/done" in command for command in commands)
+    assert any("--event done --port 9999" in command for command in commands)
     assert document["hooks"]["Stop"] == [USER_HOOK]
 
 

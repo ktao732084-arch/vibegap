@@ -17,7 +17,7 @@ from typing import Callable, Protocol
 
 from vibegap.config import Settings
 from vibegap.daemon import scheduler, sessions
-from vibegap.daemon.events import AgentEvent, AgentFinished, EventKind
+from vibegap.daemon.events import Agent, AgentEvent, AgentFinished, EventKind, LifecycleKind
 from vibegap.daemon.scheduler import (
     ClearBanner,
     HideWindow,
@@ -59,6 +59,8 @@ class RuntimeSnapshot:
     is_any_running: bool
     running_agents: tuple[str, ...] = ()  # 有运行中会话的 agent 名,去重有序
     sessions: tuple[SessionView, ...] = ()
+    connected_count: int = 0
+    connected_agents: tuple[str, ...] = ()
 
 
 class Runtime:
@@ -79,12 +81,15 @@ class Runtime:
         self._is_draining_effects = False
         self._sessions = sessions.EMPTY_SESSIONS
         self._sched = scheduler.INITIAL_SCHEDULER
+        self._connected: dict[sessions.SessionKey, datetime] = {}
+        self._last_activity_at = self._clock()
 
     def handle_event(self, event: AgentEvent) -> None:
         """处理一条 adapter 上报事件;ts 缺省时用注入时钟补齐。"""
         with self._lock:
             event = replace(event, ts=_normalize_timestamp(event.ts, self._clock()))
             key = sessions.SessionKey(event.agent, event.session_id)
+            self._last_activity_at = event.ts
             existing = self._sessions.sessions.get(key)
             is_new_run = event.kind is EventKind.RUNNING and (
                 existing is None or not existing.is_running
@@ -100,12 +105,38 @@ class Runtime:
             self._drain_effects()
         logger.debug("event %s/%s -> phase %s", event.agent.value, event.kind.value, phase)
 
+    def handle_lifecycle(
+        self,
+        agent: Agent,
+        session_id: str,
+        kind: LifecycleKind,
+    ) -> None:
+        """记录 Agent 宿主加入/离开;不把宿主退出当作一次任务完成。"""
+        with self._lock:
+            now = self._clock()
+            key = sessions.SessionKey(agent, session_id)
+            self._last_activity_at = now
+            if kind is LifecycleKind.ATTACHED:
+                self._connected[key] = now
+            else:
+                self._connected.pop(key, None)
+                self._sessions = sessions.remove_session(self._sessions, key)
+            effects = self._sync_running_state()
+            should_drain = self._queue_effects(effects)
+        if should_drain:
+            self._drain_effects()
+
     def tick(self) -> None:
         """定时脉冲:孤儿会话清理 + 延迟弹出/小结到期。"""
         with self._lock:
             now = self._clock()
             ttl = timedelta(minutes=self._settings.session_ttl_min)
             self._sessions = sessions.cleanup_expired(self._sessions, now, ttl)
+            self._connected = {
+                key: last_seen
+                for key, last_seen in self._connected.items()
+                if now - last_seen <= ttl
+            }
             effects = self._sync_running_state()
             self._sched, eff = scheduler.on_tick(
                 self._sched,
@@ -121,6 +152,7 @@ class Runtime:
     def word_committed(self) -> None:
         """UI 每提交一个词调用(M2 起使用)。"""
         with self._lock:
+            self._last_activity_at = self._clock()
             self._sched, effects = scheduler.on_word_committed(
                 self._sched,
                 self._effective_running(),
@@ -134,6 +166,7 @@ class Runtime:
     def escape(self) -> None:
         """UI Esc 逃生。"""
         with self._lock:
+            self._last_activity_at = self._clock()
             self._sched, effects = scheduler.on_escape(self._sched)
             should_drain = self._queue_effects(effects)
         if should_drain:
@@ -142,6 +175,7 @@ class Runtime:
     def hotkey_toggle(self) -> None:
         """全局热键手动唤起/隐藏。"""
         with self._lock:
+            self._last_activity_at = self._clock()
             self._sched, effects = scheduler.on_hotkey_toggle(self._sched)
             should_drain = self._queue_effects(effects)
         if should_drain:
@@ -151,6 +185,19 @@ class Runtime:
         """设置热更新(设置面板改弹出延迟等时调用)。"""
         with self._lock:
             self._settings = settings
+            self._last_activity_at = self._clock()
+
+    def should_exit_idle(self) -> bool:
+        """是否满足自动退出条件;窗口可见、Agent 活跃或用户选择常驻时永不退出。"""
+        with self._lock:
+            if self._settings.keep_running:
+                return False
+            if self._sched.phase.name != "HIDDEN":
+                return False
+            if self._connected or sessions.any_running(self._sessions):
+                return False
+            idle_for = self._clock() - self._last_activity_at
+            return idle_for >= timedelta(minutes=self._settings.idle_exit_min)
 
     def snapshot(self) -> RuntimeSnapshot:
         """当前状态只读快照(调试端点与 UI 状态栏用)。"""
@@ -173,12 +220,17 @@ class Runtime:
                         cwd=info.cwd,
                     )
                 )
+            connected_agents = tuple(
+                sorted({key.agent.value for key in self._connected})
+            )
             return RuntimeSnapshot(
                 phase=self._sched.phase.name,
                 session_count=len(self._sessions.sessions),
                 is_any_running=sessions.any_running(self._sessions),
                 running_agents=tuple(running),
                 sessions=tuple(views),
+                connected_count=len(self._connected),
+                connected_agents=connected_agents,
             )
 
     def _effective_running(self) -> bool:

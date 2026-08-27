@@ -69,6 +69,15 @@ def cleanup_expired(state: SessionsState, now: datetime, ttl: timedelta) -> Sess
     return SessionsState(sessions=MappingProxyType(alive))
 
 
+def remove_session(state: SessionsState, key: SessionKey) -> SessionsState:
+    """宿主退出时静默移除会话,避免把进程退出误报为一次任务完成。"""
+    if key not in state.sessions:
+        return state
+    remaining = dict(state.sessions)
+    del remaining[key]
+    return SessionsState(sessions=MappingProxyType(remaining))
+
+
 def _with_session(
     state: SessionsState, key: SessionKey, info: SessionInfo
 ) -> SessionsState:

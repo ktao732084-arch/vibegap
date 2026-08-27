@@ -18,6 +18,7 @@ window.__ModuleLoader__.load({
     var TRANSLATION_MAX_CHARS = 100;
     var DAEMON_URL = "http://127.0.0.1:8765/panel";
     var DAEMON_TIMEOUT_MS = 1000;
+    var DAEMON_PROBE_MS = 5000;
     var DICT_URL = "https://raw.githubusercontent.com/RealKai42/qwerty-learner/master/public/dicts/CET6_T.json";
     var STYLE_ID = "vg-card-styles";
     var DONE_NOTICE = "会话已完成 · 拼完当前词后收起";
@@ -180,19 +181,39 @@ window.__ModuleLoader__.load({
       if (payload.error) throw new Error(payload.error);
       return payload;
     }
+    function syncLocalProgress(remoteProgress) {
+      if (!remoteProgress || !Number.isFinite(Number(remoteProgress.cursor))) return;
+      progressStore.update(function (draft) {
+        if (!Array.isArray(draft.words) || draft.words.length === 0) return;
+        if (Number(remoteProgress.total) !== draft.words.length) return;
+        draft.cursor = Math.min(Math.max(Number(remoteProgress.cursor), 0), draft.words.length - 1);
+      });
+    }
     function useDaemonBackend() {
       var backend = React.useState({ mode: "probing", word: null });
+      var current = useCell({ mode: "probing", word: null });
+      var setBackend = function (next) { current.current = next; backend[1](next); };
       React.useEffect(function () {
         var active = true;
-        (async function () {
+        var timer = null;
+        async function probe() {
           try {
             var state = await panelRequest("/state");
             if (!state.ready) throw new Error("daemon has no wordbook");
-            var word = await panelRequest("/next-word");
-            if (active) backend[1]({ mode: "daemon", word: word });
-          } catch (_) { if (active) backend[1]({ mode: "local", word: null }); }
-        })();
-        return function () { active = false; };
+            syncLocalProgress(state.progress);
+            var cursor = state.progress && Number(state.progress.cursor);
+            var known = current.current.word && Number(current.current.word.position);
+            if (current.current.mode !== "daemon" || cursor !== known) {
+              var word = await panelRequest("/next-word");
+              if (active) setBackend({ mode: "daemon", word: word });
+            }
+          } catch (_) {
+            if (active && current.current.mode !== "local") setBackend({ mode: "local", word: null });
+          }
+          if (active) timer = setTimeout(probe, DAEMON_PROBE_MS);
+        }
+        probe();
+        return function () { active = false; if (timer) clearTimeout(timer); };
       }, []);
       return backend;
     }
@@ -398,13 +419,14 @@ window.__ModuleLoader__.load({
         advanceProgress(model.selection.ordered.length); return;
       }
       try {
-        await panelRequest("/commit", {
+        var result = await panelRequest("/commit", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             result: model.states.peeked[0] ? "fail" : "pass",
             typo_count: model.states.typos[0],
           }),
         });
+        syncLocalProgress(result);
         var word = await panelRequest("/next-word");
         model.backend[1]({ mode: "daemon", word: word });
       } catch (_) { model.backend[1]({ mode: "local", word: null }); }

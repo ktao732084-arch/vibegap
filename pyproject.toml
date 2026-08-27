@@ -1,13 +1,38 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "vibegap"
-version = "0.3.0"
+version = "0.4.0"
 description = "Vocabulary flashcards that auto-appear while your AI coding agent is running"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
 dependencies = ["fastapi", "uvicorn", "pywebview", "httpx", "pydantic"]
 
 [project.scripts]
 vibegap = "vibegap.__main__:main"
+vibegap-hook = "vibegap.adapters.hook:hook_main"
+vibegap-ensure = "vibegap.adapters.hook:ensure_main"
+vibegap-hotkey = "vibegap.adapters.windows_hotkey:main"
+
+[tool.setuptools.packages.find]
+include = ["vibegap*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+vibegap = [
+    "ui/web/*.html",
+    "ui/web/*.css",
+    "ui/web/*.js",
+    "ui/web/panels/*.js",
+    "adapters/**/*.ps1",
+    "adapters/**/*.ts",
+    "adapters/**/*.js",
+    "adapters/**/*.json",
+    "adapters/**/*.yml",
+    "adapters/**/*.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

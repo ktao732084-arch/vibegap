@@ -48,7 +48,33 @@ def client(panel):
 
 
 def test_healthz(client):
-    assert client.get("/healthz").json() == {"ok": True}
+    assert client.get("/healthz").json() == {
+        "ok": True,
+        "service": "vibegap",
+        "protocol": 1,
+    }
+
+
+def test_lifecycle_attach_and_detach(client):
+    payload = {"session_id": "host-1", "hook_event_name": "SessionStart"}
+    response = client.post("/lifecycle/claude-code/attached", json=payload)
+    assert response.status_code == 200
+    assert client.get("/state").json()["connected_count"] == 1
+
+    client.post(
+        "/hook/claude-code/running",
+        json={"session_id": "host-1", "hook_event_name": "UserPromptSubmit"},
+    )
+    assert client.get("/state").json()["any_running"] is True
+
+    response = client.post(
+        "/lifecycle/claude-code/detached",
+        json={"session_id": "host-1", "hook_event_name": "SessionEnd"},
+    )
+    assert response.status_code == 200
+    state = client.get("/state").json()
+    assert state["connected_count"] == 0
+    assert state["any_running"] is False
 
 
 def test_post_event_and_state(client):

@@ -3,8 +3,9 @@
 VibeGap 的 DeepSeek Harness 原生插件。Agent 持续运行 18 秒后，dsh web
 右下角会出现拼写单词卡；会话完成或等待确认时，完成当前单词后自动收起或继续。
 插件可独立运行，不要求安装 VibeGap Python 桌面端。
-如果本机 VibeGap daemon 正在运行，插件会自动改用桌面端的当前词书和进度游标；
-连接失败或运行中断线时，会回退到浏览器内的独立进度。
+如果本机 VibeGap Core 正在运行，插件会自动改用桌面端的当前词书和进度游标；
+Core 在页面打开后才由另一个 Agent 拉起也能自动接入。连接失败或运行中断线时，
+会回退到浏览器内的独立进度，远端游标会同步回本地作为断线续用位置。
 
 ## 安装
 
@@ -42,8 +43,9 @@ dsh plugin --profile web remove dsh-vibegap
 自动发音偏好通过 dsh 官方 snapshot store 保存在当前浏览器中。无痕模式或浏览器
 拒绝持久化时，卡片仍可使用，但刷新后进度可能丢失。
 
-本机 daemon 可用时，单词和进度改由 `http://127.0.0.1:8765/panel/*` 提供，
-仅允许来自 `localhost` 或 `127.0.0.1` 的 HTTP(S) 浏览器 Origin。
+本机 Core 可用时，单词和进度改由 `http://127.0.0.1:8765/panel/*` 提供，
+插件每 5 秒低频探测一次，且仅允许来自 `localhost` 或 `127.0.0.1` 的
+HTTP(S) 浏览器 Origin。DSH 单独使用时不会因此启动 Python/Core 进程。
 
 ## 使用
 

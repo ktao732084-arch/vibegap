@@ -21,12 +21,16 @@ USER_HOOK = {
 
 def test_install_into_empty_settings():
     result = cc_install.apply_install({}, "claude-code")
-    assert set(result["hooks"]) == {"UserPromptSubmit", "Stop", "Notification"}
+    assert set(result["hooks"]) == {
+        "UserPromptSubmit", "Stop", "Notification", "SessionStart", "SessionEnd"
+    }
     stop_cmd = result["hooks"]["Stop"][0]["hooks"][0]["command"]
-    assert stop_cmd.startswith("curl.exe ")
-    assert "/hook/claude-code/done" in stop_cmd
-    assert "src=vibegap" in stop_cmd
+    assert stop_cmd.startswith("vibegap-hook ")
+    assert "--agent claude-code" in stop_cmd
+    assert "--event done" in stop_cmd
     assert '"' not in stop_cmd and "&" not in stop_cmd  # 任何 shell 下免转义
+    assert "--event attached" in result["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+    assert "--event detached" in result["hooks"]["SessionEnd"][0]["hooks"][0]["command"]
 
 
 def test_install_preserves_existing_user_hooks():
@@ -64,13 +68,13 @@ def test_uninstall_from_clean_settings_is_noop():
 def test_port_is_threaded_into_command():
     result = cc_install.apply_install({}, "claude-code", port=9999)
     cmd = result["hooks"]["Stop"][0]["hooks"][0]["command"]
-    assert ":9999/hook/" in cmd
+    assert "--port 9999" in cmd
 
 
 def test_default_port_present():
     result = cc_install.apply_install({}, "claude-code")
     cmd = result["hooks"]["Stop"][0]["hooks"][0]["command"]
-    assert ":8765/hook/" in cmd
+    assert "--port 8765" in cmd
 
 
 @pytest.mark.parametrize(
@@ -94,7 +98,7 @@ def test_valid_hooks_shape_passes():
 def test_agent_override_for_dsh_bridge():
     result = cc_install.apply_install({}, "dsh")
     cmd = result["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
-    assert "/hook/dsh/running" in cmd
+    assert "--agent dsh --event running" in cmd
 
 
 def test_save_and_backup_roundtrip(tmp_path):

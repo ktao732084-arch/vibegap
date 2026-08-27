@@ -2,7 +2,13 @@
 from datetime import datetime, timedelta, timezone
 
 from vibegap.config import Settings
-from vibegap.daemon.events import Agent, AgentEvent, AgentFinished, EventKind
+from vibegap.daemon.events import (
+    Agent,
+    AgentEvent,
+    AgentFinished,
+    EventKind,
+    LifecycleKind,
+)
 from vibegap.daemon.runtime import Runtime
 
 T0 = datetime(2026, 8, 25, 10, 0, 0)
@@ -257,3 +263,32 @@ def test_notifier_failure_does_not_break_runtime():
     clock.advance(20)
     runtime.tick()  # 不应抛异常
     assert runtime.snapshot().phase == "SHOWING"
+
+
+def test_idle_exit_requires_hidden_and_no_connected_agent():
+    clock = FakeClock()
+    runtime = Runtime(
+        settings=Settings(idle_exit_min=10), notifier=FakeNotifier(), clock=clock
+    )
+    runtime.handle_lifecycle(Agent.CLAUDE_CODE, "s1", LifecycleKind.ATTACHED)
+    clock.advance(20 * 60)
+    assert runtime.should_exit_idle() is False
+    runtime.handle_lifecycle(Agent.CLAUDE_CODE, "s1", LifecycleKind.DETACHED)
+    clock.advance(9 * 60)
+    assert runtime.should_exit_idle() is False
+    clock.advance(61)
+    assert runtime.should_exit_idle() is True
+
+
+def test_idle_exit_never_closes_visible_window_or_keep_running():
+    clock = FakeClock()
+    runtime = Runtime(
+        settings=Settings(idle_exit_min=1), notifier=FakeNotifier(), clock=clock
+    )
+    runtime.hotkey_toggle()
+    clock.advance(120)
+    assert runtime.should_exit_idle() is False
+    runtime.hotkey_toggle()
+    runtime.update_settings(Settings(idle_exit_min=1, keep_running=True))
+    clock.advance(120)
+    assert runtime.should_exit_idle() is False

@@ -20,6 +20,13 @@ class EventKind(str, Enum):
     ATTENTION = "attention"  # agent 停下来等用户(权限确认等)
 
 
+class LifecycleKind(str, Enum):
+    """Agent 宿主生命周期;与一次推理的 RUNNING/DONE 分开建模。"""
+
+    ATTACHED = "attached"
+    DETACHED = "detached"
+
+
 @dataclass(frozen=True)
 class AgentEvent:
     """Adapter 上报的原始事件。ts 为 None 时由 Runtime 用注入时钟补齐(§7.3)。"""

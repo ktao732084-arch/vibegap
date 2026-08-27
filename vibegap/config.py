@@ -16,9 +16,14 @@ SESSION_TTL_MIN = 30       # 孤儿会话清理阈值
 ADAPTER_TIMEOUT_SEC = 1    # 钩子上报 HTTP 超时
 PANEL_ORIGIN_PATTERN = r"https?://(?:localhost|127\.0\.0\.1)(?::[0-9]+)?"
 TICK_INTERVAL_SEC = 1      # 调度器定时脉冲间隔
+IDLE_EXIT_MIN = 10         # 隐藏且无 Agent 活动多久后退出(保持闲置零进程)
 TOAST_TIMEOUT_SEC = 5      # toast 子进程超时(效果在锁外执行,慢不阻塞事件,见 runtime.py)
 LOG_RETENTION_DAYS = 7
 SEED_RANGE = 2**31         # 洗牌种子取值上界(同一常量保证 seeded_order 的确定性)
+
+# 本机服务身份。懒启动 helper 必须校验身份,不能把占用 8765 的其他程序当成 VibeGap。
+SERVICE_ID = "vibegap"
+SERVICE_PROTOCOL_VERSION = 1
 
 MODE_SEQUENTIAL = "sequential"
 MODE_SHUFFLED = "shuffled"
@@ -41,7 +46,7 @@ WINDOW_WIDTH = 390
 WINDOW_HEIGHT = 272
 WINDOW_TITLE = "VibeGap"
 
-DICTS_DIR = Path(__file__).resolve().parent.parent / "dicts"  # 内置词书目录
+DICTS_DIR = Path(__file__).resolve().parent.parent / "dicts"  # 源码安装的词书目录
 
 # 各 agent 探测/接入路径(设置面板 Agent 区块 + codex 日志监听)
 CLAUDE_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
@@ -70,6 +75,8 @@ class Settings:
     daemon_port: int = DAEMON_PORT
     daily_goal: int = 50        # 每日目标词数
     auto_popup: bool = True     # 关闭后 agent 运行不自动弹窗,仅热键/接口手动唤醒
+    idle_exit_min: int = IDLE_EXIT_MIN  # 隐藏、无 Agent、无交互后自动退出
+    keep_running: bool = False  # 显式选择常驻;默认 False 才能兑现闲置零进程
 
 
 def load_settings(path: Path = CONFIG_PATH) -> Settings:

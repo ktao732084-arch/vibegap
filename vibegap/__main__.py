@@ -4,10 +4,13 @@ pywebview 要求主循环占主线程;uvicorn 与 ticker 各占一个 daemon 线
 """
 from __future__ import annotations
 
+import argparse
 import logging
 import logging.handlers
+import socket
 import threading
 import time
+from dataclasses import replace
 
 import uvicorn
 
@@ -27,6 +30,7 @@ from vibegap.daemon.codex_watcher import CodexWatcher
 from vibegap.daemon.events import Agent, AgentEvent, EventKind
 from vibegap.daemon.newsfeed import NewsFeed
 from vibegap.daemon.runtime import Runtime
+from vibegap.adapters.windows_hotkey import is_installed as shell_hotkey_installed
 from vibegap.store import db as store_db
 from vibegap.store import wordbooks
 from vibegap.ui.bridge import open_bridge
@@ -87,11 +91,36 @@ def _kv_set(key: str, value: str) -> None:
         conn.close()
 
 
-def _start_server(runtime: Runtime, settings: Settings, panel: PanelApi) -> None:
+def _bind_server_socket(settings: Settings) -> socket.socket:
+    """在主线程预绑定端口;失败时必须在创建窗口前退出。"""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        sock.bind((DAEMON_HOST, settings.daemon_port))
+        return sock
+    except Exception:
+        sock.close()
+        raise
+
+
+def _start_server(
+    runtime: Runtime,
+    settings: Settings,
+    panel: PanelApi,
+    sock: socket.socket,
+) -> tuple[uvicorn.Server, threading.Thread]:
     app = create_app(runtime, panel)
     config = uvicorn.Config(app, host=DAEMON_HOST, port=settings.daemon_port, log_level="warning")
     server = uvicorn.Server(config)
-    threading.Thread(target=server.run, name="vibegap-server", daemon=True).start()
+    thread = threading.Thread(
+        target=server.run,
+        kwargs={"sockets": [sock]},
+        name="vibegap-server",
+        daemon=True,
+    )
+    thread.start()
+    return server, thread
 
 
 def _make_codex_watcher(runtime: Runtime) -> CodexWatcher | None:
@@ -116,7 +145,10 @@ def _make_codex_watcher(runtime: Runtime) -> CodexWatcher | None:
 
 
 def _start_ticker(
-    runtime: Runtime, newsfeed: NewsFeed, watcher: CodexWatcher | None
+    runtime: Runtime,
+    newsfeed: NewsFeed,
+    watcher: CodexWatcher | None,
+    request_exit,
 ) -> None:
     def loop() -> None:
         while True:
@@ -126,6 +158,10 @@ def _start_ticker(
                 newsfeed.maybe_refresh()
                 if watcher is not None:
                     watcher.poll()
+                if runtime.should_exit_idle():
+                    logger.info("idle timeout reached; exiting")
+                    request_exit()
+                    return
             except Exception:  # noqa: BLE001 - ticker 线程绝不能死
                 logger.exception("ticker iteration failed")
 
@@ -134,10 +170,25 @@ def _start_ticker(
 
 def main() -> None:
     """启动入口。"""
+    _setup_logging()
+    parser = argparse.ArgumentParser(description="VibeGap desktop runtime")
+    parser.add_argument("--port", type=int)
+    args = parser.parse_args()
+    settings = load_settings()
+    if args.port is not None:
+        settings = replace(settings, daemon_port=args.port)
+    try:
+        server_socket = _bind_server_socket(settings)
+    except OSError as exc:
+        logger.info(
+            "vibegap already running or port %d unavailable: %s",
+            settings.daemon_port,
+            exc,
+        )
+        return
+
     import webview
 
-    _setup_logging()
-    settings = load_settings()
     _bootstrap_db()
 
     notifier = WindowNotifier(fallback=ToastNotifier())
@@ -146,15 +197,30 @@ def main() -> None:
     newsfeed.maybe_refresh()
     bridge = open_bridge(DB_PATH, runtime, newsfeed, settings)
 
-    _start_server(runtime, settings, bridge)
-    _start_ticker(runtime, newsfeed, _make_codex_watcher(runtime))
-    start_hotkey_listener(runtime.hotkey_toggle)
-
+    server, server_thread = _start_server(runtime, settings, bridge, server_socket)
     window = create_window(bridge, _kv_get, _kv_set)
     notifier.set_window(window)
+
+    def request_exit() -> None:
+        try:
+            window.destroy()
+        except Exception:  # noqa: BLE001 - 退出竞态时 webview 可能已经销毁
+            logger.exception("idle window destroy failed")
+
+    _start_ticker(runtime, newsfeed, _make_codex_watcher(runtime), request_exit)
+    if shell_hotkey_installed():
+        logger.info("shell hotkey installed; in-process hotkey listener disabled")
+    else:
+        start_hotkey_listener(runtime.hotkey_toggle)
+
     logger.info("vibegap started (port %d)", settings.daemon_port)
-    webview.start()
-    bridge._close()
+    try:
+        webview.start()
+    finally:
+        server.should_exit = True
+        server_thread.join(timeout=2)
+        server_socket.close()
+        bridge._close()
 
 
 if __name__ == "__main__":

@@ -45,7 +45,7 @@
 └───────────────┬─────────────────────────────────────────┘
                 │ HTTP POST /event  (localhost:8765)
 ┌───────────────▼─────────────────────────────────────────┐
-│  Daemon(FastAPI,常驻)                                  │
+│  Core(FastAPI,按需运行)                                │
 │  · 会话状态机:Map<session_id, AgentState>               │
 │  · UI 调度状态机:HIDDEN → ARMED → SHOWING → SOFT_CLOSE  │
 │  · 定时器:延迟弹出 / 自动收起                            │
@@ -86,10 +86,11 @@ vibegap/
 ├── README.md
 ├── pyproject.toml
 ├── vibegap/
-│   ├── __main__.py          # python -m vibegap 入口:启动 daemon + UI
+│   ├── __main__.py          # 同步 bind 后启动 Core + UI;隐藏空闲时自动退出
 │   ├── config.py            # 全部常量与用户配置(唯一允许出现"魔法数字"的文件)
 │   ├── daemon/
 │   │   ├── app.py           # FastAPI 路由(仅路由,不含业务逻辑,<150 行)
+│   │   ├── protocol.py      # HTTP 模型与 Hook payload 归一化
 │   │   ├── runtime.py       # 运行时外壳(唯一可变状态容器,效果分发)
 │   │   ├── sessions.py      # 会话状态机(纯函数核心)
 │   │   ├── scheduler.py     # UI 调度状态机(纯函数核心)
@@ -111,10 +112,12 @@ vibegap/
 │   │       └── panels/
 │   │           ├── word_card.js    # 主面板:打字背单词
 │   │           └── news_ticker.js  # 条带面板:AIHOT 新闻轮播
-│   └── adapters/            # 安装脚本 + 钩子脚本(不是 Python 包)
+│   └── adapters/            # 安装脚本 + 短命 helper
+│       ├── hook.py          # 上报失败时懒启动 Core 并重放 stdin
+│       ├── windows_hotkey.py # 可选 Shell Link 冷启动热键(默认不开)
 │       ├── claude_code/
 │       │   ├── install.py   # 把 hooks 写入 ~/.claude/settings.json(merge,不覆盖)
-│       │   └── notify.ps1   # 钩子实际执行的上报脚本
+│       │   └── notify.ps1   # 旧环境/手工接入的备用上报脚本
 │       ├── codex/
 │       │   └── install.py   # merge 写入 ~/.codex/hooks.json(不碰 notify)
 │       ├── pi/
@@ -285,8 +288,8 @@ CREATE TABLE kv (
 ## 5. Adapter 设计(每个 agent 的适配细节)
 
 统一原则:**adapter 只上报事件,不包含任何业务逻辑;单个钩子脚本 ≤30 行**;
-钩子脚本内一切外部交互都必须有界(stdin 读取、HTTP 均 ≤1s 超时);
-上报失败(daemon 没开)必须静默吞掉,绝不能影响 agent 本身运行(`try/catch` + 1s 超时)。
+钩子脚本内一切外部交互都必须有界;热路径 HTTP ≤1s,冷启动等待 ≤8s。
+任何失败必须静默吞掉,绝不能影响 agent 本身运行。
 
 ### 5.1 Claude Code(M1)
 
@@ -297,12 +300,15 @@ CREATE TABLE kv (
 | `UserPromptSubmit` | `running` |
 | `Stop` | `done` |
 | `Notification`(权限请求/空闲提醒) | `attention` |
+| `SessionStart` | `attached` |
+| `SessionEnd` | `detached` |
 
-- 钩子命令为一行裸 curl(Windows 10+ 自带,启动 ~50ms;PowerShell 方案冷启动实测 2.4s,弃用):
-  `curl.exe -s -o nul -m 1 -X POST --data-binary @- http://127.0.0.1:<port>/hook/<agent>/<event>?src=vibegap`
-  stdin 的 hook JSON 原样透传,daemon 侧解析 session_id(`POST /hook/{agent}/{event}`)。
-  URL 用路径参数、无 `&` 无引号,任何 shell 下免转义;`?src=vibegap` 兼作安装器识别标记。
-- `notify.ps1` 保留在仓库作为无 curl 环境的后备方案(stdin 读取与 HTTP 均 1s 有界)。
+- 钩子命令调用短命的 `vibegap-hook`。helper 一次读入 stdin:热路径直接 POST;
+  Core 不在时启动 `python -m vibegap`,等待 `/healthz` 的 service/protocol 身份匹配后,
+  原样重放首次 payload。不能使用 `curl || start`,因为 curl 已消费 stdin。
+- `SessionStart/SessionEnd` 与一次推理的 `running/done` 分开建模;`detached` 上报失败时
+  绝不反向启动 Core,避免空闲退出后被清理事件复活。
+- `notify.ps1` 保留在仓库作为旧环境/手工接入的后备方案。
 - `install.py` 职责:**merge** 进现有 settings.json(绝不覆盖用户已有 hooks),写入前备份原文件,
   提供 `--uninstall` 精确移除自己写入的条目。
 
@@ -457,6 +463,7 @@ reduce_xxx(state, input, now, ...) -> tuple[NewState, list[Effect]]
 POPUP_DELAY_SEC = 18      # ARMED → SHOWING 的延迟
 SUMMARY_LINGER_SEC = 2    # 小结停留
 SESSION_TTL_MIN = 30      # 孤儿会话清理
+IDLE_EXIT_MIN = 10        # 隐藏、无 Agent/交互后的退出延迟
 DAEMON_PORT = 8765
 ADAPTER_TIMEOUT_SEC = 1   # 钩子上报超时
 ```

@@ -16,7 +16,8 @@
 - **会话面板**:按 agent 分组显示各会话的运行中/已完成状态
 - **打字模式**:qwerty-learner 式拼写,音标+发音(有道音源,可关),Tab 看答案(看过即记入错词),←→ 浏览前后词
 - **错词复习 / 每日目标 / AI 新闻轮播条**(卡兹克 [AIHOT](https://aihot.virxact.com) 公开 API)
-- **小细节**:跟随系统或手动切换深浅主题、全局热键手动唤醒(Ctrl+Alt+W,被占自动换)、自动唤醒可关、整窗拖拽、不抢焦点
+- **按需运行**:Agent 启动时自动拉起;窗口隐藏且无 Agent/交互 10 分钟后自动退出,无需手动守着 daemon
+- **小细节**:跟随系统或手动切换深浅主题、运行中全局热键手动唤醒(Ctrl+Alt+W,被占自动换)、自动唤醒可关、整窗拖拽、不抢焦点
 
 ## 快速开始(Windows)
 
@@ -24,7 +25,9 @@
 git clone https://github.com/ktao732084-arch/vibegap && cd vibegap
 pip install -e .
 python scripts/fetch_dicts.py        # 下载内置词书(CET6 / GRE,来自 qwerty-learner)
-python -m vibegap                    # 启动 daemon + 悬浮窗
+python vibegap/adapters/claude_code/install.py
+python vibegap/adapters/codex/install.py
+vibegap-ensure --toggle              # 可选:立即启动并检查悬浮窗
 ```
 
 ### DSH 原生插件(跨平台,无需 Python)
@@ -34,11 +37,13 @@ dsh plugin --profile web add dsh-vibegap
 dsh web
 ```
 
-插件可独立保存词库和进度;若本机同时运行 VibeGap 桌面端,会自动共享桌面端的
-当前词书与游标。安装、交互和开发说明见
+插件可独立保存词库和进度;本机 Core 稍后由其他 Agent 拉起时,插件会自动探测并
+切换到桌面端的当前词书与游标,断线后再回退到浏览器进度。安装、交互和开发说明见
 [`vibegap/adapters/dsh/plugin/README.md`](vibegap/adapters/dsh/plugin/README.md)。
 
-接入 Claude Code / Codex(merge 写入 Hooks,自动备份,`--uninstall` 可完全还原):
+接入 Claude Code / Codex(merge 写入 Hooks,自动备份,`--uninstall` 可完全还原)。
+Hooks 使用短命的 `vibegap-hook`:正常时直接上报;Core 不在时自动启动、等待
+`/healthz` 身份校验通过,再原样重放首次事件:
 
 ```bash
 python vibegap/adapters/claude_code/install.py
@@ -47,13 +52,22 @@ python vibegap/adapters/codex/install.py
 
 Codex 安装后请在 `/hooks` 中检查并信任配置。官方 Hooks 负责实时事件,`~/.codex/sessions` 日志监听只负责守护进程重启恢复与降级(包括恢复后继续写入旧日期目录的历史对话),不会修改已有 `notify`。其余 agent 见 `vibegap/adapters/` 下各目录说明,或在悬浮窗 ⚙ 设置 → Agent 接入 里一键操作。
 
+`SessionStart/SessionEnd` 负责 Core 使用生命周期,`UserPromptSubmit/Stop` 负责一次任务的弹窗生命周期。默认在窗口隐藏、没有连接中的 Agent 且 10 分钟无交互后退出;可在设置中调整或开启“后台常驻”。
+
+实验性的系统冷启动热键可用 `vibegap-hotkey install` 安装、
+`vibegap-hotkey uninstall` 移除。Windows Explorer 对 `.lnk` 热键可能有数秒延迟,
+因此目前不默认开启;Core 已运行时使用程序内热键响应更快。
+
 ## 架构(30 秒版)
 
 ```
-agent 钩子/日志 ──HTTP──▶ daemon(FastAPI :8765)
-                           ├─ 会话状态机 + UI 调度状态机(纯函数 reducer)
-                           ├─ SQLite:词书/游标/词记录(唯一持久状态)
-                           └─ pywebview 置顶悬浮窗(Shell + Panels 小窗框架)
+Agent Hook ──▶ 短命 helper ──HTTP──▶ Core(FastAPI :8765)
+                  │                  ├─ 会话/宿主生命周期状态机
+                  └─ 失败时按需启动   ├─ SQLite:词书/游标/词记录
+                                     └─ pywebview 置顶悬浮窗
+
+DSH 单独使用 ──▶ DSH 进程内卡片(0 个 VibeGap 额外进程)
+第二个 Agent 加入 ──▶ 自动发现 Core 并切换共享进度
 ```
 
 核心不变式:**背单词进度只存在于 SQLite,adapter 和调度永远不碰它**——所以"断点续背"不是功能,是架构的自然结果。完整设计见 [spec.md](spec.md)(设计文档即唯一事实源)。

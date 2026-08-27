@@ -12,8 +12,10 @@ from datetime import datetime
 from pathlib import Path
 
 DEFAULT_PORT = 8765
-_MARKERS = ("src=vibegap", "src=wordgap")
+_MARKERS = ("vibegap-hook", "src=vibegap", "src=wordgap")
 HOOK_EVENTS = {
+    "SessionStart": "attached",
+    "SessionEnd": "detached",
     "UserPromptSubmit": "running",
     "Stop": "done",
     "SubagentStart": "running",
@@ -22,12 +24,8 @@ HOOK_EVENTS = {
 
 
 def build_command(event: str, port: int = DEFAULT_PORT) -> str:
-    """生成把 Hook stdin 原样上报 daemon 的有界 curl 命令。"""
-    url = f"http://127.0.0.1:{port}/hook/codex/{event}?src=vibegap"
-    return (
-        "curl.exe -s -o nul --noproxy 127.0.0.1 --connect-timeout 0.3 -m 1 "
-        f"-X POST --data-binary @- {url}"
-    )
+    """生成瞬时 helper 命令;冷启动后仍能重放原始 Hook payload。"""
+    return f"vibegap-hook --agent codex --event {event} --port {port}"
 
 
 def load_hooks(path: Path) -> dict:
