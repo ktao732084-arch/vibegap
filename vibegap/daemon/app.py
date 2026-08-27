@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections.abc import Awaitable, Callable
 from datetime import datetime  # noqa: F401 - pydantic 模型注解运行时需要
@@ -11,7 +12,14 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import JSONResponse, Response
 
-from vibegap.config import PANEL_ORIGIN_PATTERN
+from vibegap.config import (
+    PANEL_ORIGIN_PATTERN,
+    RESULT_FAIL,
+    RESULT_PASS,
+    RESULT_SKIP,
+)
+
+logger = logging.getLogger(__name__)
 from vibegap.daemon.events import Agent, AgentEvent, EventKind
 from vibegap.daemon.runtime import Runtime
 
@@ -32,7 +40,7 @@ class PanelCommitIn(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    result: Literal["pass", "fail", "skip"]
+    result: Literal[RESULT_PASS, RESULT_FAIL, RESULT_SKIP]  # 与 config.VALID_RESULTS 同源
     typo_count: int = Field(default=0, ge=0)
 
 
@@ -131,23 +139,35 @@ def _mount_control_routes(app: FastAPI, runtime: Runtime) -> None:
 def _mount_panel_routes(app: FastAPI, panel: PanelApi | None) -> None:
     """挂载仅允许本机 Web Origin 调用的共享进度入口。"""
 
+    def _guarded(call: Callable[[], dict]) -> dict:
+        # 观测性兜底:PanelApi 的意外异常记入 daemon.log 而非裸 500(§7.7)
+        try:
+            return call()
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("panel route failed")
+            raise HTTPException(status_code=500, detail="panel error") from None
+
     @app.get("/panel/state")
     def panel_state() -> dict:
-        service = _require_panel(panel)
-        current = service.get_progress()
-        return {"ok": True, "ready": "error" not in current, "progress": current}
+        def run() -> dict:
+            current = _require_panel(panel).get_progress()
+            return {"ok": True, "ready": "error" not in current, "progress": current}
+
+        return _guarded(run)
 
     @app.get("/panel/next-word")
     def panel_next_word() -> dict:
-        return _require_panel(panel).next_word()
+        return _guarded(lambda: _require_panel(panel).next_word())
 
     @app.post("/panel/commit")
     def panel_commit(body: PanelCommitIn) -> dict:
-        return _require_panel(panel).commit_word(body.result, body.typo_count)
+        return _guarded(lambda: _require_panel(panel).commit_word(body.result, body.typo_count))
 
     @app.get("/panel/progress")
     def panel_progress() -> dict:
-        return _require_panel(panel).get_progress()
+        return _guarded(lambda: _require_panel(panel).get_progress())
 
 
 def _require_panel(panel: PanelApi | None) -> PanelApi:
