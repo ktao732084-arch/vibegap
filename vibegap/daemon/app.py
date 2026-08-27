@@ -53,8 +53,7 @@ def create_app(runtime: Runtime) -> FastAPI:
         try:
             payload = json.loads((await request.body()) or b"{}")
             if isinstance(payload, dict):
-                if payload.get("session_id"):
-                    session_id = str(payload["session_id"])
+                session_id = _hook_session_id(payload)
                 if payload.get("cwd"):
                     cwd = str(payload["cwd"])
         except json.JSONDecodeError:
@@ -91,3 +90,11 @@ def _reject_browser(request: Request) -> None:
     """带 Origin/Referer 的请求来自浏览器页面(潜在 CSRF),adapter 脚本不会带。"""
     if request.headers.get("origin") or request.headers.get("referer"):
         raise HTTPException(status_code=403, detail="browser requests not allowed")
+
+
+def _hook_session_id(payload: dict) -> str:
+    """为 Codex 子 Agent 使用独立 agent_id,其余事件沿用 session_id。"""
+    event_name = str(payload.get("hook_event_name", ""))
+    if event_name in ("SubagentStart", "SubagentStop") and payload.get("agent_id"):
+        return str(payload["agent_id"])
+    return str(payload.get("session_id") or "unknown")

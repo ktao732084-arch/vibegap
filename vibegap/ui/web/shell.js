@@ -191,7 +191,7 @@
             let right;
             if (a.status === "connected") {
               right = '<span class="ag-ok">' + esc(a.detail) + "</span>" +
-                (a.agent in { "claude-code": 1, workbuddy: 1 }
+                (a.agent in { "claude-code": 1, codex: 1, workbuddy: 1 }
                   ? ' <span class="ag-btn" data-agent="' + a.agent + '" data-act="uninstall">移除</span>'
                   : "");
             } else if (a.status === "available") {
@@ -323,7 +323,7 @@
 
   window.shell = shell;
 
-  // Esc 分层:面板内部模式(复习/浏览)→ 覆盖层 → 隐藏窗口。捕获阶段监听。
+  // Esc 分层:覆盖层 → 复习/浏览退出 → 当前词记 skip 并隐藏。捕获阶段监听。
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     e.preventDefault();

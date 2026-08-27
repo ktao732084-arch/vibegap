@@ -21,6 +21,10 @@
     return div.innerHTML;
   }
 
+  function escAttr(s) {
+    return escText(s).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
   function render() {
     if (!word) return;
     const showAll = isBrowsing() || revealed;
@@ -28,7 +32,7 @@
       let cls = i < typed ? "ch ok" : showAll ? "ch reveal" : "ch";
       if (i === typed && !isBrowsing()) cls += " cur";  // 闪烁光标:当前待输入位
       const shown = i < typed || showAll ? c : " ";
-      return '<span class="' + cls + '">' + shown + "</span>";
+      return '<span class="' + cls + '">' + escText(shown) + "</span>";
     }).join("");
     const transFull = word.trans.join(";");
     const transShort = transFull.length > 64 ? transFull.slice(0, 64) + "…" : transFull;
@@ -44,9 +48,9 @@
     }
     root.innerHTML =
       '<div class="wc-word" id="wc-word">' + chars + "</div>" +
-      '<div class="wc-trans" title="' + escText(transFull) + '">' + escText(transShort) + "</div>" +
+      '<div class="wc-trans" title="' + escAttr(transFull) + '">' + escText(transShort) + "</div>" +
       '<div class="wc-phone"><span class="wc-phone-hit" id="wc-phone" title="点击发音">' +
-      (word.usphone ? "/" + word.usphone + "/" : "") +
+      (word.usphone ? "/" + escText(word.usphone) + "/" : "") +
       ' <span class="wc-speaker">🔊</span></span></div>' +
       '<div class="wc-hint">' + hint + "</div>";
     const phone = document.getElementById("wc-phone");
@@ -82,7 +86,7 @@
       busy = false;
       if (w.error) {
         root.innerHTML = '<div class="wc-trans">' +
-          (w.error === "no_wordbook" ? "还没有词书,先导入一本" : w.error) + "</div>";
+          escText(w.error === "no_wordbook" ? "还没有词书,先导入一本" : w.error) + "</div>";
         word = null;
         return;
       }
@@ -126,12 +130,19 @@
       });
       return;
     }
-    api.commit_word(result, typos).then(() => {
+    // Python 提交会同步触发小结回调,因此先计数,避免小结少显示最后一个词。
+    window.shell.state.sessionWords += 1;
+    api.commit_word(result, typos).then((response) => {
       busy = false;
-      window.shell.state.sessionWords += 1;
+      if (response && response.error) {
+        window.shell.state.sessionWords -= 1;
+      }
       window.shell.updateStatus();
       if (!window.shell.state.softClosing) load();
       // softClosing 时不加载下一词:Python 侧会推进到小结(onSummary)
+    }).catch(() => {
+      busy = false;
+      window.shell.state.sessionWords -= 1;
     });
   }
 
@@ -187,7 +198,17 @@
     handleEscape() {
       if (isReview()) { review = null; load(); return true; }
       if (isBrowsing()) { load(); return true; }
-      return false;
+      const api = window.shell.api();
+      if (!api || !api.skip_current_and_escape || !word || busy) return false;
+      busy = true;
+      api.skip_current_and_escape(typos).then((response) => {
+        busy = false;
+        if (!response || !response.error) {
+          window.shell.state.sessionWords += 1;
+          window.shell.updateStatus();
+        }
+      }).catch(() => { busy = false; window.shell.escape(); });
+      return true;
     },
     startReview() {
       const api = window.shell.api();

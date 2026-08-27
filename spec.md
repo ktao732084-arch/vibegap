@@ -1,6 +1,6 @@
 # VibeGap — AI Agent 等待间隙背单词工具 设计文档
 
-> 版本:v0.1(设计稿)  日期:2026-08-25  状态:待评审,未开工
+> 版本:v0.3  日期:2026-08-27  状态:M3 已实现,持续演进
 >
 > 一句话:当 Claude Code / Codex / pi / WorkBuddy 在跑任务时,自动弹出单词卡接着上次的进度背;
 > agent 跑完(或需要你确认权限)时,提醒并自动收起。进度全局持久,与任何会话无关。
@@ -41,7 +41,7 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Adapter 层(每个 agent 一个,只做一件事:上报事件)      │
-│  claude-code hooks │ codex notify+log │ pi ext │ workbuddy│
+│  claude-code hooks │ codex hooks+log  │ pi ext │ workbuddy│
 └───────────────┬─────────────────────────────────────────┘
                 │ HTTP POST /event  (localhost:8765)
 ┌───────────────▼─────────────────────────────────────────┐
@@ -93,6 +93,7 @@ vibegap/
 │   │   ├── runtime.py       # 运行时外壳(唯一可变状态容器,效果分发)
 │   │   ├── sessions.py      # 会话状态机(纯函数核心)
 │   │   ├── scheduler.py     # UI 调度状态机(纯函数核心)
+│   │   ├── codex_watcher.py # Codex JSONL 启动态恢复与降级监听
 │   │   ├── newsfeed.py      # AIHOT 新闻拉取 + 缓存(M2,失败降级隐藏轮播条)
 │   │   └── events.py        # 事件数据类
 │   ├── store/
@@ -115,9 +116,7 @@ vibegap/
 │       │   ├── install.py   # 把 hooks 写入 ~/.claude/settings.json(merge,不覆盖)
 │       │   └── notify.ps1   # 钩子实际执行的上报脚本
 │       ├── codex/
-│       │   ├── install.py   # 写 ~/.codex/config.toml 的 notify 项
-│       │   ├── notify.ps1
-│       │   └── log_watcher.py  # sessions JSONL 监听(检测"开始",daemon 内加载)
+│       │   └── install.py   # merge 写入 ~/.codex/hooks.json(不碰 notify)
 │       ├── pi/
 │       │   └── vibegap.ts   # pi extension:turn_start / agent_end → HTTP POST
 │       └── workbuddy/
@@ -272,7 +271,8 @@ CREATE TABLE kv (
    (理由:任何一个跑完你都要切走看结果)。若用户没理会横幅继续背、且仍有会话 RUNNING,则保持 SHOWING。
 4. **手动逃生**:`Esc` 立即隐藏窗口(当前词按 skip 记录),并进入**抑制态**——同一批仍在运行的
    会话不得再次唤起窗口(否则 18 秒后又弹回来,真机验证过的反模式);收到新的 RUNNING 事件
-   (用户又提了问)或全部会话结束时解除抑制。`POST /toggle` / 全局热键手动唤起,与 agent 状态无关。
+   (用户又提了问)或全部会话结束时解除抑制。`POST /toggle` / 全局热键手动唤起与 agent 状态无关;
+   再次按热键手动隐藏时同样进入抑制态,避免下个 tick 立刻回弹。
 5. **ARMED 期间的 AgentFinished 一律静默丢弃**(有意行为,非遗漏):延迟期内窗口从未显示,
    用户仍在终端前,agent 自己的完成输出即是提醒;之后窗口若因其他会话弹出,不补报横幅。
    防闪弹的"零打扰"优先级高于完成提醒的完整性。规则 3 的"一律触发软关闭"仅适用于窗口可见时
@@ -306,20 +306,26 @@ CREATE TABLE kv (
 - `install.py` 职责:**merge** 进现有 settings.json(绝不覆盖用户已有 hooks),写入前备份原文件,
   提供 `--uninstall` 精确移除自己写入的条目。
 
-### 5.2 Codex CLI(M3,已实现,路线有变)
+### 5.2 Codex CLI(M3,已实现)
 
-机制:**纯日志监听**(`daemon/codex_watcher.py`),不再使用 notify。
+机制:**官方 Hooks 实时上报 + JSONL 日志恢复兜底**,不使用 `notify`。
 
-- 实机发现 `~/.codex/config.toml` 的 `notify` 已被 Codex Desktop 自身占用
-  (codex-computer-use.exe turn-ended),覆盖会破坏桌面端功能 → 放弃 notify 路线。
-- 实测日志事件(2026-08 抓取):`event_msg.payload.type` 中
-  `task_started` → running;`task_complete` / `turn_aborted` → done;
-  首行 `session_meta` 提供 session_id 与 cwd。
-- watcher 由 ticker 每秒驱动,只扫最近 2 天的日期目录;增量读取(记 offset),
-  只消费完整行;daemon 启动前已有内容不回放,监听期间新建的文件从头处理。
-- 好处:零配置修改、零冲突,codex 侧无任何安装步骤(设置面板显示"自动 · 日志监听")。
-- 风险:sessions 日志格式非公开契约,codex 升级可能变。全部隔离在 codex_watcher.py
-  单文件内,解析失败静默降级(无事件),不影响其他 agent。
+- `~/.codex/hooks.json` 接入 `UserPromptSubmit` / `Stop` 与
+  `SubagentStart` / `SubagentStop`,分别上报 running / done。子 Agent 使用独立 `agent_id`,
+  根任务使用 `session_id`,因此父任务与并行子任务不会折叠成一个会话。
+- `adapters/codex/install.py` 只 merge 自己的 command hooks,写前备份,可精确卸载;
+  安装后需在 Codex `/hooks` 中检查并信任。实现遵循
+  [Codex Hooks 官方文档](https://learn.chatgpt.com/docs/hooks)。
+- 不复用 `~/.codex/config.toml` 的 `notify`:该字段可能已被 Codex Desktop 自身使用,
+  覆盖会破坏桌面端功能。
+- watcher(`daemon/codex_watcher.py`)由 ticker 每秒驱动:高频扫描最近 2 天日期目录和所有
+  已跟踪文件,每 5 秒低频发现最近 30 分钟内有写入的历史文件。后者用于覆盖 Codex
+  恢复旧对话后继续写回创建日目录的行为。守护进程发现文件时从文件尾反向查找最后一条
+  生命周期事件,只恢复仍在运行的任务;随后按 offset 增量读取完整行。子 Agent 日志以
+  文件名 UUID 区分,不采用元数据中的父 session_id。
+- Hooks 与 watcher 可能同时看到同一条结束事件;会话 reducer 对已空闲会话的重复 done/attention 去重。
+- JSONL 是内部格式而非稳定接口,因此仅作恢复/降级路径,解析逻辑隔离在单文件内,
+  失败时静默降级且不影响其他 Agent。
 
 ### 5.3 pi(M4)
 
@@ -503,6 +509,7 @@ merge 不覆盖(绝不动用户已有配置项)、写前备份(`*.bak.<时间戳
 | `progress.py` | pytest,内存 SQLite | 顺序/乱序断点续背;同 seed 顺序稳定;背完一轮归零换 seed;崩溃恢复(只丢当前词) |
 | `sessions.py` | 纯函数单测 | running/done/attention 转移;多会话;TTL 孤儿清理 |
 | `scheduler.py` | 纯函数单测(虚拟时钟) | 延迟期内结束→静默取消;SHOWING 中 finished→软关闭;多会话仍 RUNNING 时不强关;Esc 逃生 |
+| `codex_watcher.py` | pytest,临时 JSONL 树 | 启动恢复;增量完整行;历史创建日的恢复任务;子 Agent 独立 ID |
 | `wordbooks.py` | pytest | qwerty-learner JSON 导入;畸形 JSON 报错不入库 |
 | adapter 安装 | 手测清单 | merge 不破坏已有 hooks;卸载后 settings 还原;daemon 未启动时 agent 不受影响 |
 | UI | 手测清单 | 不抢焦点;打字判定;横幅;窗口位置记忆 |
@@ -518,7 +525,7 @@ TDD 流程:每个模块先写用例(RED)再实现(GREEN),见全局 testing 规�
 | **M0 内核** | store 全部 + sessions/scheduler 纯函数 + 全部单测 | pytest 全绿,覆盖 ≥80%,无 UI 无网络 | 1 天 |
 | **M1 走通** | daemon(FastAPI)+ Claude Code adapter;UI 暂用 Windows toast 通知代替 | 真机:提问 18s 后弹 toast,Stop 后弹"跑完"toast,断点数字正确 | 1 天 |
 | **M2 小窗** | pywebview 悬浮窗 Shell + 单词卡面板(打字模式)+ 软关闭 + 断点续背全流程 + 新闻轮播条(AIHOT) | 真机连续使用一下午无闪弹、无焦点抢夺、进度不丢;断网时轮播条隐藏而背词不受影响 | 1.5~2.5 天 |
-| **M3 Codex** | codex notify + log_watcher | 两个 agent 同开,任一结束都正确软关闭 | 0.5~1 天 |
+| **M3 Codex** | 官方 Hooks + JSONL 恢复 watcher | 根任务/并行子 Agent 分开计数,重启后恢复运行态 | 0.5~1 天 |
 | **M4 扩展** | pi extension + dsh(hook bridge 路线)+ WorkBuddy + 统计页(今日/累计) | — | 1~1.5 天 |
 | M5(可选) | FSRS 间隔重复、认读模式、打包 exe | — | 另行评估 |
 
@@ -543,9 +550,8 @@ TDD 流程:每个模块先写用例(RED)再实现(GREEN),见全局 testing 规�
 ## 10. 开放问题(实施前需确认或实机验证)
 
 1. pywebview 在 Windows 11 上能否做到真正的"显示但不抢焦点"?若不能,采用 §6.1 的降级方案,M2 首日验证。
-2. Codex sessions JSONL 中"user message"条目的准确字段名 —— M3 开工时抓一份真实日志确认。
-3. WorkBuddy 的 Claude-Code 兼容 hooks 覆盖哪些事件 —— M4 开工时实机验证。
-3b. dsh 的 Claude Code hook bridge 是否透传 UserPromptSubmit/Stop/Notification 三个事件、
+2. WorkBuddy 的 Claude-Code 兼容 hooks 覆盖哪些事件 —— M4 开工时实机验证。
+3. dsh 的 Claude Code hook bridge 是否透传 UserPromptSubmit/Stop/Notification 三个事件、
     session_id 字段是否一致 —— M4 开工时实机验证;不行则走原生插件路线(§5.4 路线 B)。
 4. 词书选哪本作为默认内置?(建议先放 CET-6 + GRE 两本,用户可另导入。)
 5. 全局热键库选型(`keyboard` 库需管理员权限的问题)—— M2 时验证,不行就只留托盘图标唤起。

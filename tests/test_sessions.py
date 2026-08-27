@@ -41,6 +41,14 @@ def test_done_on_unknown_session_still_emits_finished():
     assert effects == [AgentFinished(agent=Agent.CODEX, kind=EventKind.DONE)]
 
 
+def test_duplicate_done_for_idle_session_is_deduplicated():
+    state, _ = reduce_event(EMPTY_SESSIONS, _event(EventKind.RUNNING))
+    state, first = reduce_event(state, _event(EventKind.DONE))
+    state, duplicate = reduce_event(state, _event(EventKind.DONE))
+    assert first == [AgentFinished(agent=Agent.CLAUDE_CODE, kind=EventKind.DONE)]
+    assert duplicate == []
+
+
 def test_multiple_sessions_any_running():
     state, _ = reduce_event(EMPTY_SESSIONS, _event(EventKind.RUNNING, sid="a"))
     state, _ = reduce_event(state, _event(EventKind.RUNNING, agent=Agent.CODEX, sid="b"))

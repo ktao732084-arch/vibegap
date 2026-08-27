@@ -37,6 +37,25 @@ def test_post_event_done_flow(client):
     assert state["phase"] == "HIDDEN"
 
 
+def test_post_event_with_offset_timestamp_survives_tick():
+    clock = FakeClock()
+    runtime = Runtime(settings=Settings(), notifier=FakeNotifier(), clock=clock)
+    local_client = TestClient(create_app(runtime))
+    response = local_client.post(
+        "/event",
+        json={
+            "agent": "codex",
+            "session_id": "aware-ts",
+            "event": "running",
+            "ts": "2026-08-25T10:00:00+08:00",
+        },
+    )
+    assert response.status_code == 200
+    clock.advance(1)
+    runtime.tick()
+    assert runtime.snapshot().phase in ("HIDDEN", "ARMED")
+
+
 def test_invalid_agent_rejected(client):
     resp = client.post(
         "/event", json={"agent": "skynet", "session_id": "s1", "event": "running"}
@@ -74,6 +93,30 @@ def test_hook_endpoint_extracts_session_id(client):
     )
     assert resp.status_code == 200
     assert client.get("/state").json()["phase"] == "ARMED"
+
+
+def test_codex_subagent_hooks_use_distinct_agent_ids(client):
+    for agent_id in ("agent-a", "agent-b"):
+        response = client.post(
+            "/hook/codex/running",
+            json={
+                "hook_event_name": "SubagentStart",
+                "session_id": "parent-session",
+                "agent_id": agent_id,
+            },
+        )
+        assert response.status_code == 200
+    state = client.get("/state").json()
+    assert state["session_count"] == 2
+    client.post(
+        "/hook/codex/done",
+        json={
+            "hook_event_name": "SubagentStop",
+            "session_id": "parent-session",
+            "agent_id": "agent-a",
+        },
+    )
+    assert client.get("/state").json()["any_running"] is True
 
 
 def test_hook_endpoint_tolerates_garbage_body(client):
