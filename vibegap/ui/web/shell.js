@@ -80,14 +80,27 @@
           box.innerHTML = '<span class="dot idle"></span>空闲';
           return;
         }
-        box.innerHTML = names.map((name) => {
-          const a = byAgent[name];
+        const fmt = (a) => {
           const parts = [];
           if (a.active) parts.push("活" + a.active);
           if (a.done) parts.push("完" + a.done);
-          return '<span class="dot ' + (a.active ? "busy" : "idle") + '"></span>' +
-            shortAgent(name) + " " + parts.join(" ");
-        }).join('<span class="ag-sep">|</span>');
+          return parts.join(" ");
+        };
+        if (names.length === 1) {
+          const a = byAgent[names[0]];
+          box.innerHTML = '<span class="dot ' + (a.active ? "busy" : "idle") + '"></span>' +
+            shortAgent(names[0]) + " " + fmt(a);
+          return;
+        }
+        // 多 agent 收拢为汇总,防止挤占状态栏;明细在会话面板(点击查看)
+        const total = { active: 0, done: 0 };
+        names.forEach((name) => {
+          total.active += byAgent[name].active;
+          total.done += byAgent[name].done;
+        });
+        box.innerHTML = '<span class="dot ' + (total.active ? "busy" : "idle") + '"></span>' +
+          fmt(total);
+        box.title = names.map((n) => shortAgent(n) + " " + fmt(byAgent[n])).join(" | ");
       }).catch(() => {});
     },
 
