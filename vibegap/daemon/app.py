@@ -2,11 +2,16 @@
 from __future__ import annotations
 
 import json
+import re
+from collections.abc import Awaitable, Callable
 from datetime import datetime  # noqa: F401 - pydantic 模型注解运行时需要
+from typing import Literal, Protocol
 
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+from starlette.responses import JSONResponse, Response
 
+from vibegap.config import PANEL_ORIGIN_PATTERN
 from vibegap.daemon.events import Agent, AgentEvent, EventKind
 from vibegap.daemon.runtime import Runtime
 
@@ -22,9 +27,43 @@ class EventIn(BaseModel):
     ts: datetime | None = None
 
 
-def create_app(runtime: Runtime) -> FastAPI:
+class PanelCommitIn(BaseModel):
+    """POST /panel/commit 请求体。"""
+
+    model_config = ConfigDict(frozen=True)
+
+    result: Literal["pass", "fail", "skip"]
+    typo_count: int = Field(default=0, ge=0)
+
+
+class PanelApi(Protocol):
+    """daemon 面板路由所需的最小进度接口。"""
+
+    def next_word(self) -> dict:
+        """读取共享游标指向的单词。"""
+        ...
+
+    def commit_word(self, result: str, typo_count: int = 0) -> dict:
+        """提交结果并推进共享游标。"""
+        ...
+
+    def get_progress(self) -> dict:
+        """读取共享进度。"""
+        ...
+
+
+def create_app(runtime: Runtime, panel: PanelApi | None = None) -> FastAPI:
     """应用工厂:注入 Runtime,便于测试。"""
     app = FastAPI(title="vibegap-daemon")
+    app.middleware("http")(_panel_cors)
+    _mount_event_routes(app, runtime)
+    _mount_control_routes(app, runtime)
+    _mount_panel_routes(app, panel)
+    return app
+
+
+def _mount_event_routes(app: FastAPI, runtime: Runtime) -> None:
+    """挂载 adapter 事件入口。"""
 
     @app.post("/event")
     def post_event(body: EventIn, request: Request) -> dict:
@@ -63,6 +102,10 @@ def create_app(runtime: Runtime) -> FastAPI:
         )
         return {"ok": True}
 
+
+def _mount_control_routes(app: FastAPI, runtime: Runtime) -> None:
+    """挂载原有状态与控制入口。"""
+
     @app.get("/state")
     def get_state() -> dict:
         snap = runtime.snapshot()
@@ -83,7 +126,59 @@ def create_app(runtime: Runtime) -> FastAPI:
     def healthz() -> dict:
         return {"ok": True}
 
-    return app
+
+
+def _mount_panel_routes(app: FastAPI, panel: PanelApi | None) -> None:
+    """挂载仅允许本机 Web Origin 调用的共享进度入口。"""
+
+    @app.get("/panel/state")
+    def panel_state() -> dict:
+        service = _require_panel(panel)
+        current = service.get_progress()
+        return {"ok": True, "ready": "error" not in current, "progress": current}
+
+    @app.get("/panel/next-word")
+    def panel_next_word() -> dict:
+        return _require_panel(panel).next_word()
+
+    @app.post("/panel/commit")
+    def panel_commit(body: PanelCommitIn) -> dict:
+        return _require_panel(panel).commit_word(body.result, body.typo_count)
+
+    @app.get("/panel/progress")
+    def panel_progress() -> dict:
+        return _require_panel(panel).get_progress()
+
+
+def _require_panel(panel: PanelApi | None) -> PanelApi:
+    if panel is None:
+        raise HTTPException(status_code=503, detail="panel service unavailable")
+    return panel
+
+
+async def _panel_cors(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """只给 /panel/* 的 localhost/127.0.0.1 浏览器 Origin 开 CORS。"""
+    if not request.url.path.startswith("/panel/"):
+        return await call_next(request)
+    origin = request.headers.get("origin")
+    if origin and re.fullmatch(PANEL_ORIGIN_PATTERN, origin) is None:
+        return JSONResponse(status_code=403, content={"detail": "origin not allowed"})
+    if request.method == "OPTIONS":
+        response = Response(status_code=204)
+    else:
+        response = await call_next(request)
+    if origin:
+        _set_panel_cors_headers(response, origin)
+    return response
+
+
+def _set_panel_cors_headers(response: Response, origin: str) -> None:
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "content-type"
+    response.headers.append("Vary", "Origin")
 
 
 def _reject_browser(request: Request) -> None:

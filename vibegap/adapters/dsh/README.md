@@ -14,7 +14,8 @@ python ../claude_code/install.py --settings <dsh hooks 配置路径> --agent dsh
 
 ## 路线 B:原生插件 dsh-vibegap(plugin/)
 
-Cordis 服务端插件,监听 turn 生命周期 → POST 本机 VibeGap daemon。纯 CJS 免构建。
+自包含 dsh web 单词卡 + Cordis 服务端事件桥。浏览器可独立下载词库和保存进度；
+检测到本机 VibeGap daemon 时，自动与桌面悬浮窗共享当前词书和游标。纯 CJS 免构建。
 
 安装(本地开发):
 
@@ -43,8 +44,8 @@ dsh-web-attention-badge 证明了浏览器半边可以**免构建**:`dsh.client`
 手写 ModuleLoader bundle(`window.__ModuleLoader__.load`),`inject: ["slots"]`,
 `ctx.slots.register({name: "shell.overlay", ...}, Component)` 即挂进 web UI;
 组件经 GlobalStandardProps 拿 `useSessions` store(`pendingInteraction` /
-`completed` 字段)。VibeGap 面板可按此模式做 React 单词卡,数据走本机 daemon
-(需给 daemon 加 localhost 限定的 CORS 面板端点)。
+`completed` 字段)。VibeGap 面板按此模式挂载 React 单词卡；默认使用浏览器 snapshot
+store，本机 daemon 可用时通过 localhost 限定 CORS 的 `/panel/*` 端点共享进度。
 
 ## 发布到生态(可选,学习类目前是空白)
 

@@ -2,8 +2,10 @@
 from datetime import timedelta
 
 import pytest
+from fastapi.testclient import TestClient
 
 from vibegap.config import Settings
+from vibegap.daemon.app import create_app
 from vibegap.daemon.newsfeed import NewsFeed, NewsItem
 from vibegap.daemon.runtime import Runtime
 from vibegap.store.db import connect
@@ -38,6 +40,21 @@ def test_next_word_and_commit_flow(env):
     assert w["total"] == 5
     result = bridge.commit_word("pass", 1)
     assert result["cursor"] == 1
+    assert bridge.next_word()["name"] == "word1"
+
+
+def test_panel_routes_share_bridge_cursor(env):
+    bridge, runtime, _ = env
+    client = TestClient(create_app(runtime, bridge))
+    headers = {"Origin": "http://127.0.0.1:3080"}
+    assert client.get("/panel/state", headers=headers).json()["ready"] is True
+    assert client.get("/panel/next-word", headers=headers).json()["name"] == "word0"
+    response = client.post(
+        "/panel/commit",
+        headers=headers,
+        json={"result": "pass", "typo_count": 1},
+    )
+    assert response.json()["cursor"] == 1
     assert bridge.next_word()["name"] == "word1"
 
 

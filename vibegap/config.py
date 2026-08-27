@@ -14,6 +14,7 @@ POPUP_DELAY_SEC = 18       # ARMED → SHOWING 的延迟(防闪弹)
 SUMMARY_LINGER_SEC = 2     # 软关闭小结停留时长
 SESSION_TTL_MIN = 30       # 孤儿会话清理阈值
 ADAPTER_TIMEOUT_SEC = 1    # 钩子上报 HTTP 超时
+PANEL_ORIGIN_PATTERN = r"https?://(?:localhost|127\.0\.0\.1)(?::[0-9]+)?"
 TICK_INTERVAL_SEC = 1      # 调度器定时脉冲间隔
 TOAST_TIMEOUT_SEC = 5      # toast 子进程超时(效果在锁外执行,慢不阻塞事件,见 runtime.py)
 LOG_RETENTION_DAYS = 7

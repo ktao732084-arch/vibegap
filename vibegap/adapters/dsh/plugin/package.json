@@ -9,6 +9,14 @@
     "./package.json": "./package.json"
   },
   "keywords": ["dsh-plugin", "vibegap", "vocabulary", "productivity"],
+  "files": ["lib", "cordis.patch.yml", "README.md"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ktao732084-arch/vibegap.git",
+    "directory": "vibegap/adapters/dsh/plugin"
+  },
+  "homepage": "https://github.com/ktao732084-arch/vibegap/tree/main/vibegap/adapters/dsh/plugin#readme",
+  "bugs": "https://github.com/ktao732084-arch/vibegap/issues",
   "license": "MIT",
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },

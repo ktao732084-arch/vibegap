@@ -22,7 +22,7 @@ from vibegap.config import (
     Settings,
     load_settings,
 )
-from vibegap.daemon.app import create_app
+from vibegap.daemon.app import PanelApi, create_app
 from vibegap.daemon.codex_watcher import CodexWatcher
 from vibegap.daemon.events import Agent, AgentEvent, EventKind
 from vibegap.daemon.newsfeed import NewsFeed
@@ -87,8 +87,8 @@ def _kv_set(key: str, value: str) -> None:
         conn.close()
 
 
-def _start_server(runtime: Runtime, settings: Settings) -> None:
-    app = create_app(runtime)
+def _start_server(runtime: Runtime, settings: Settings, panel: PanelApi) -> None:
+    app = create_app(runtime, panel)
     config = uvicorn.Config(app, host=DAEMON_HOST, port=settings.daemon_port, log_level="warning")
     server = uvicorn.Server(config)
     threading.Thread(target=server.run, name="vibegap-server", daemon=True).start()
@@ -146,7 +146,7 @@ def main() -> None:
     newsfeed.maybe_refresh()
     bridge = open_bridge(DB_PATH, runtime, newsfeed, settings)
 
-    _start_server(runtime, settings)
+    _start_server(runtime, settings, bridge)
     _start_ticker(runtime, newsfeed, _make_codex_watcher(runtime))
     start_hotkey_listener(runtime.hotkey_toggle)
 

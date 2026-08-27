@@ -16,6 +16,8 @@ window.__ModuleLoader__.load({
     var DOWNLOAD_TIMEOUT_MS = 30000;
     var AUDIO_TIMEOUT_MS = 6000;
     var TRANSLATION_MAX_CHARS = 100;
+    var DAEMON_URL = "http://127.0.0.1:8765/panel";
+    var DAEMON_TIMEOUT_MS = 1000;
     var DICT_URL = "https://raw.githubusercontent.com/RealKai42/qwerty-learner/master/public/dicts/CET6_T.json";
     var STYLE_ID = "vg-card-styles";
     var DONE_NOTICE = "会话已完成 · 拼完当前词后收起";
@@ -75,7 +77,6 @@ window.__ModuleLoader__.load({
       }, [store]);
       return state[0];
     }
-
     function useCell(value) {
       return React.useState({ current: value })[0];
     }
@@ -168,6 +169,32 @@ window.__ModuleLoader__.load({
       } catch (_) {
         setStatus({ busy: false, error: "下载失败，请检查网络后重试" });
       }
+    }
+
+    async function panelRequest(path, options) {
+      var init = options || {};
+      init.signal = AbortSignal.timeout(DAEMON_TIMEOUT_MS);
+      var response = await fetch(DAEMON_URL + path, init);
+      if (!response.ok) throw new Error("panel request failed");
+      var payload = await response.json();
+      if (payload.error) throw new Error(payload.error);
+      return payload;
+    }
+    function useDaemonBackend() {
+      var backend = React.useState({ mode: "probing", word: null });
+      React.useEffect(function () {
+        var active = true;
+        (async function () {
+          try {
+            var state = await panelRequest("/state");
+            if (!state.ready) throw new Error("daemon has no wordbook");
+            var word = await panelRequest("/next-word");
+            if (active) backend[1]({ mode: "daemon", word: word });
+          } catch (_) { if (active) backend[1]({ mode: "local", word: null }); }
+        })();
+        return function () { active = false; };
+      }, []);
+      return backend;
     }
 
     function advanceProgress(total) {
@@ -311,6 +338,13 @@ window.__ModuleLoader__.load({
       var cursor = ordered.length ? Math.min(Math.max(cursorValue, 0), ordered.length - 1) : 0;
       return { ordered: ordered, word: ordered[cursor] || null };
     }
+    function activeSelection(local, backend) {
+      var remote = backend[0];
+      if (remote.mode === "daemon" && remote.word) {
+        return { ordered: [remote.word], word: remote.word, isDaemon: true };
+      }
+      return { ordered: local.ordered, word: local.word, isDaemon: false };
+    }
 
     function useLifecycleBridge(sessionState, states, refs) {
       var showBanner = function (message) {
@@ -324,7 +358,6 @@ window.__ModuleLoader__.load({
       var tracker = useLifecycle(sessionState, states.visible[0], states.visible[1], showBanner, onRestart);
       return { tracker: tracker, showBanner: showBanner };
     }
-
     function resetInput(states) {
       states.typed[1](0); states.typos[1](0); states.revealed[1](false);
       states.peeked[1](false); states.busy[1](false); states.shaking[1](false);
@@ -347,10 +380,10 @@ window.__ModuleLoader__.load({
     function completeWord(model) {
       model.states.busy[1](true);
       model.states.outcome[1](model.states.peeked[0] ? "fail" : "pass");
-      setTimeout(function () {
+      setTimeout(async function () {
         var shouldHide = !!model.refs.banner.current && !model.lifecycle.tracker.running.current;
         if (shouldHide) model.states.holdWord[1](model.selection.word);
-        advanceProgress(model.selection.ordered.length);
+        await advanceSelection(model);
         if (!model.refs.banner.current) { resetInput(model.states); return; }
         if (model.lifecycle.tracker.running.current) {
           model.lifecycle.showBanner(null); resetInput(model.states); return;
@@ -359,6 +392,22 @@ window.__ModuleLoader__.load({
           hideCard(model, false);
         }, SUMMARY_LINGER_MS);
       }, WORD_COMMIT_DELAY_MS);
+    }
+    async function advanceSelection(model) {
+      if (!model.selection.isDaemon) {
+        advanceProgress(model.selection.ordered.length); return;
+      }
+      try {
+        await panelRequest("/commit", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            result: model.states.peeked[0] ? "fail" : "pass",
+            typo_count: model.states.typos[0],
+          }),
+        });
+        var word = await panelRequest("/next-word");
+        model.backend[1]({ mode: "daemon", word: word });
+      } catch (_) { model.backend[1]({ mode: "local", word: null }); }
     }
 
     function shakeCard(states) {
@@ -422,11 +471,9 @@ window.__ModuleLoader__.load({
         toggleAuto: function () { prefsStore.set({ autoPronounce: !model.autoPronounce }); },
       };
     }
-
     function displayedWord(model) {
       return model.states.holdWord[0] || model.selection.word;
     }
-
     function VibegapCard(props) {
       var sessionState = props.useSessions(identity);
       var progress = useSnapshot(progressStore);
@@ -434,9 +481,10 @@ window.__ModuleLoader__.load({
       var states = useCardStates();
       var refs = { card: useCell(null), hideTimer: useCell(null), banner: useCell(null) };
       var lifecycle = useLifecycleBridge(sessionState, states, refs);
-      var selection = useWordSelection(progress);
+      var backend = useDaemonBackend();
+      var selection = activeSelection(useWordSelection(progress), backend);
       var model = {
-        states: states, refs: refs, lifecycle: lifecycle, selection: selection,
+        states: states, refs: refs, lifecycle: lifecycle, selection: selection, backend: backend,
         autoPronounce: !prefs || prefs.autoPronounce !== false,
       };
       useCardEffects(model);
