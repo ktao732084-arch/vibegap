@@ -6,7 +6,8 @@
   event_msg.payload.type in (task_complete, turn_aborted) -> done
 session_id 取自文件名 uuid,cwd 取自首行 session_meta。
 守护进程启动时会反向查找每个文件最后一条生命周期事件,只恢复仍在运行的
-任务;随后 offset 置为文件尾,继续增量处理新增内容。
+任务;随后 offset 置为文件尾,继续增量处理新增内容。Codex 恢复旧对话时仍会
+写回创建日目录,因此近期目录高频扫描之外,还会低频发现近期有写入的历史文件。
 """
 from __future__ import annotations
 
@@ -17,7 +18,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
-from vibegap.config import CODEX_WATCH_DAYS
+from vibegap.config import (
+    CODEX_HISTORY_LOOKBACK_MIN,
+    CODEX_HISTORY_SCAN_SEC,
+    CODEX_WATCH_DAYS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,29 +50,67 @@ class CodexWatcher:
         self._offsets: dict[Path, int] = {}
         self._meta: dict[Path, tuple[str, str]] = {}  # path -> (session_id, cwd)
         self._is_first_poll = True
+        self._next_history_scan_at: datetime | None = None
 
     def poll(self) -> None:
         """扫描最近日期目录下的会话文件,处理新增行。所有异常吞掉只记日志。"""
-        for path in self._recent_files():
+        now = self._clock()
+        candidates: dict[Path, bool] = {
+            path: False for path in self._offsets
+        }  # path -> 新发现时是否从头回放
+        recent_files = list(self._recent_files(now))
+        for path in recent_files:
+            candidates[path] = not self._is_first_poll
+        if self._history_scan_due(now):
+            recent_set = set(recent_files)
+            for path in self._recently_modified_history_files(now, recent_set):
+                candidates.setdefault(path, False)
+            self._next_history_scan_at = now + timedelta(seconds=CODEX_HISTORY_SCAN_SEC)
+
+        for path, replay in candidates.items():
             try:
-                self._read_new_lines(path)
+                self._read_new_lines(path, replay)
             except OSError as exc:
                 logger.debug("codex watcher read failed %s: %s", path.name, exc)
         self._is_first_poll = False
 
-    def _recent_files(self):
-        today = self._clock().date()
+    def _recent_files(self, now: datetime):
+        today = now.date()
         for delta in range(CODEX_WATCH_DAYS):
             day = today - timedelta(days=delta)
             folder = self._dir / f"{day.year:04d}" / f"{day.month:02d}" / f"{day.day:02d}"
             if folder.is_dir():
                 yield from folder.glob("*.jsonl")
 
-    def _read_new_lines(self, path: Path) -> None:
+    def _history_scan_due(self, now: datetime) -> bool:
+        return self._next_history_scan_at is None or now >= self._next_history_scan_at
+
+    def _recently_modified_history_files(
+        self, now: datetime, recent_files: set[Path]
+    ) -> list[Path]:
+        """找出刚被恢复的旧对话;仅 stat 历史文件,不读取其正文。"""
+        if not self._dir.is_dir():
+            return []
+        cutoff = (now - timedelta(minutes=CODEX_HISTORY_LOOKBACK_MIN)).timestamp()
+        found: list[Path] = []
+        try:
+            for path in self._dir.rglob("*.jsonl"):
+                if path in recent_files or path in self._offsets:
+                    continue
+                try:
+                    if path.stat().st_mtime >= cutoff:
+                        found.append(path)
+                except OSError as exc:
+                    logger.debug("codex watcher stat failed %s: %s", path.name, exc)
+        except OSError as exc:
+            logger.debug("codex watcher history scan failed: %s", exc)
+        return found
+
+    def _read_new_lines(self, path: Path, replay: bool) -> None:
         size = path.stat().st_size
         if path not in self._offsets:
             # 启动前已存在的文件跳过旧内容;监听期间新出现的文件从头处理
-            self._register_file(path, size, replay=not self._is_first_poll)
+            self._register_file(path, size, replay=replay)
         offset = self._offsets[path]
         if size <= offset:
             return

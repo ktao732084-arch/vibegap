@@ -1,6 +1,6 @@
 # VibeGap — AI Agent 等待间隙背单词工具 设计文档
 
-> 版本:v0.1(设计稿)  日期:2026-08-25  状态:待评审,未开工
+> 版本:v0.3  日期:2026-08-27  状态:M3 已实现,持续演进
 >
 > 一句话:当 Claude Code / Codex / pi / WorkBuddy 在跑任务时,自动弹出单词卡接着上次的进度背;
 > agent 跑完(或需要你确认权限)时,提醒并自动收起。进度全局持久,与任何会话无关。
@@ -318,9 +318,11 @@ CREATE TABLE kv (
   [Codex Hooks 官方文档](https://learn.chatgpt.com/docs/hooks)。
 - 不复用 `~/.codex/config.toml` 的 `notify`:该字段可能已被 Codex Desktop 自身使用,
   覆盖会破坏桌面端功能。
-- watcher(`daemon/codex_watcher.py`)由 ticker 每秒驱动,只扫最近 2 天日期目录。
-  守护进程启动时从文件尾反向查找最后一条生命周期事件,只恢复仍在运行的任务;
-  随后按 offset 增量读取完整行。子 Agent 日志以文件名 UUID 区分,不采用元数据中的父 session_id。
+- watcher(`daemon/codex_watcher.py`)由 ticker 每秒驱动:高频扫描最近 2 天日期目录和所有
+  已跟踪文件,每 5 秒低频发现最近 30 分钟内有写入的历史文件。后者用于覆盖 Codex
+  恢复旧对话后继续写回创建日目录的行为。守护进程发现文件时从文件尾反向查找最后一条
+  生命周期事件,只恢复仍在运行的任务;随后按 offset 增量读取完整行。子 Agent 日志以
+  文件名 UUID 区分,不采用元数据中的父 session_id。
 - Hooks 与 watcher 可能同时看到同一条结束事件;会话 reducer 对已空闲会话的重复 done/attention 去重。
 - JSONL 是内部格式而非稳定接口,因此仅作恢复/降级路径,解析逻辑隔离在单文件内,
   失败时静默降级且不影响其他 Agent。
@@ -507,6 +509,7 @@ merge 不覆盖(绝不动用户已有配置项)、写前备份(`*.bak.<时间戳
 | `progress.py` | pytest,内存 SQLite | 顺序/乱序断点续背;同 seed 顺序稳定;背完一轮归零换 seed;崩溃恢复(只丢当前词) |
 | `sessions.py` | 纯函数单测 | running/done/attention 转移;多会话;TTL 孤儿清理 |
 | `scheduler.py` | 纯函数单测(虚拟时钟) | 延迟期内结束→静默取消;SHOWING 中 finished→软关闭;多会话仍 RUNNING 时不强关;Esc 逃生 |
+| `codex_watcher.py` | pytest,临时 JSONL 树 | 启动恢复;增量完整行;历史创建日的恢复任务;子 Agent 独立 ID |
 | `wordbooks.py` | pytest | qwerty-learner JSON 导入;畸形 JSON 报错不入库 |
 | adapter 安装 | 手测清单 | merge 不破坏已有 hooks;卸载后 settings 还原;daemon 未启动时 agent 不受影响 |
 | UI | 手测清单 | 不抢焦点;打字判定;横幅;窗口位置记忆 |

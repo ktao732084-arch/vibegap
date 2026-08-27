@@ -34,7 +34,7 @@ python vibegap/adapters/claude_code/install.py
 python vibegap/adapters/codex/install.py
 ```
 
-Codex 安装后请在 `/hooks` 中检查并信任配置。官方 Hooks 负责实时事件,`~/.codex/sessions` 日志监听只负责守护进程重启恢复与降级,不会修改已有 `notify`。其余 agent 见 `vibegap/adapters/` 下各目录说明,或在悬浮窗 ⚙ 设置 → Agent 接入 里一键操作。
+Codex 安装后请在 `/hooks` 中检查并信任配置。官方 Hooks 负责实时事件,`~/.codex/sessions` 日志监听只负责守护进程重启恢复与降级(包括恢复后继续写入旧日期目录的历史对话),不会修改已有 `notify`。其余 agent 见 `vibegap/adapters/` 下各目录说明,或在悬浮窗 ⚙ 设置 → Agent 接入 里一键操作。
 
 ## 架构(30 秒版)
 
@@ -50,7 +50,7 @@ agent 钩子/日志 ──HTTP──▶ daemon(FastAPI :8765)
 ## 开发
 
 ```bash
-python -m pytest -q          # 165 个测试
+python -m pytest -q          # 全量测试
 ```
 
 工程约束(单文件 ≤500 行、纯函数内核、依赖方向单向等)见 spec.md §7。欢迎 issue / PR。

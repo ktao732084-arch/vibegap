@@ -49,7 +49,9 @@ CODEX_HOOKS_PATH = Path.home() / ".codex" / "hooks.json"
 PI_DIR = Path.home() / ".pi"
 DSH_DIR = Path.home() / ".dsh"
 WORKBUDDY_SETTINGS_PATH = Path.home() / ".workbuddy-ai" / "settings.json"
-CODEX_WATCH_DAYS = 2       # 只扫最近 N 天的日期目录,避免全树遍历
+CODEX_WATCH_DAYS = 2       # 只高频扫描最近 N 天的日期目录
+CODEX_HISTORY_SCAN_SEC = 5  # 低频发现恢复后继续写入旧日期目录的 Codex 对话
+CODEX_HISTORY_LOOKBACK_MIN = SESSION_TTL_MIN  # 只接管近期有写入的历史日志
 
 DATA_DIR = Path.home() / ".vibegap"
 DB_PATH = DATA_DIR / "vibegap.db"
