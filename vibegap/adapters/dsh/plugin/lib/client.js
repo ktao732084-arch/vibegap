@@ -338,7 +338,7 @@ window.__ModuleLoader__.load({
           h(Button, { size: "sm", variant: "ghost", onClick: props.toggleAuto },
             "自动发音：" + (props.autoPronounce ? "开" : "关")),
         ),
-        h("div", { className: "vg-hint" }, "点击卡片后拼写 · Tab 查看答案 · Esc 隐藏"),
+        h("div", { className: "vg-hint" }, "点击卡片后拼写 · Tab 查看答案 · Esc 隐藏 · Ctrl+Alt+V 呼出"),
       );
     }
 
@@ -477,6 +477,18 @@ window.__ModuleLoader__.load({
       React.useEffect(function () {
         return function () { if (model.refs.hideTimer.current) clearTimeout(model.refs.hideTimer.current); };
       }, []);
+      React.useEffect(function () {
+        // 页面内手动唤醒:Ctrl+Alt+V 唤出/隐藏(dsh 标签页聚焦时有效)
+        function onSummon(event) {
+          if (!event.ctrlKey || !event.altKey || event.key.toLowerCase() !== "v") return;
+          event.preventDefault();
+          if (model.states.visible[0]) { hideCard(model, true); return; }
+          model.lifecycle.tracker.state.current.suppressed = false;
+          model.states.visible[1](true);
+        }
+        document.addEventListener("keydown", onSummon);
+        return function () { document.removeEventListener("keydown", onSummon); };
+      }, [model.states.visible[0]]);
       React.useEffect(function () {
         // 恢复上次拖到的位置;越出当前视口则放弃,回默认右下角
         try {
