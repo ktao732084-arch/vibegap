@@ -35,12 +35,17 @@ window.__ModuleLoader__.load({
       { autoPronounce: true },
       { persist: { name: "vibegap.prefs" } },
     );
+    var posStore = runtime.createSnapshotStore(
+      { x: null, y: null },
+      { persist: { name: "vibegap.pos" } },
+    );
 
     var css = [
       ".vg-card{position:fixed;right:24px;bottom:24px;width:min(390px,calc(100vw - 32px));box-sizing:border-box;padding:16px;border:1px solid var(--dsw-alias-border-l,#d8d8d8);border-radius:14px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#202020);box-shadow:0 12px 34px rgba(0,0,0,.18);font-family:inherit;pointer-events:auto;outline:none;z-index:1}",
       ".vg-card:focus{border-color:var(--dsw-alias-border-focus,#5794ff);box-shadow:0 12px 34px rgba(0,0,0,.18),0 0 0 2px rgba(87,148,255,.2)}",
-      ".vg-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}",
+      ".vg-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;cursor:move;user-select:none;touch-action:none}",
       ".vg-title{font-size:13px;font-weight:650;letter-spacing:.02em}",
+      ".vg-prog{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font-size:11px;color:var(--dsw-alias-label-tertiary,#888)}",
       ".vg-close{min-width:28px!important;padding:0!important;font-size:18px!important}",
       ".vg-banner{margin:-2px 0 14px;padding:8px 10px;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover,#f2f3f5);font-size:12px;line-height:1.4}",
       ".vg-word{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;min-height:48px;margin:16px 0 12px}",
@@ -325,7 +330,7 @@ window.__ModuleLoader__.load({
         h("div", { className: "vg-trans", title: translation }, translation.slice(0, TRANSLATION_MAX_CHARS)),
         h("div", { className: "vg-meta" },
           props.word.usphone ? "/" + props.word.usphone + "/" : null,
-          props.typos ? "错误 " + props.typos : "尚无错误",
+          props.typos ? "错 " + props.typos : null,
           props.outcome ? h("span", { role: "status" }, props.outcome === "fail" ? "已记为需复习" : "拼写正确") : null,
         ),
         h("div", { className: "vg-actions" },
@@ -344,6 +349,7 @@ window.__ModuleLoader__.load({
         peeked: React.useState(false), shaking: React.useState(false), busy: React.useState(false),
         outcome: React.useState(""), holdWord: React.useState(null),
         download: React.useState({ busy: false, error: "" }),
+        pos: React.useState(null),
       };
     }
 
@@ -437,6 +443,31 @@ window.__ModuleLoader__.load({
       setTimeout(function () { states.shaking[1](false); }, SHAKE_MS);
     }
 
+    function startDrag(model, event) {
+      if (event.target.closest("button,a,input,textarea,select")) return;
+      var card = model.refs.card.current;
+      if (!card || event.button !== 0) return;
+      event.preventDefault();
+      var rect = card.getBoundingClientRect();
+      var offsetX = event.clientX - rect.left;
+      var offsetY = event.clientY - rect.top;
+      var last = null;
+      function move(ev) {
+        last = {
+          x: Math.min(Math.max(ev.clientX - offsetX, 0), Math.max(window.innerWidth - rect.width, 0)),
+          y: Math.min(Math.max(ev.clientY - offsetY, 0), Math.max(window.innerHeight - 48, 0)),
+        };
+        model.states.pos[1](last);
+      }
+      function up() {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        if (last) try { posStore.set(last); } catch (_) {}
+      }
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+    }
+
     function useCardEffects(model) {
       var word = displayedWord(model);
       React.useEffect(function () { resetInput(model.states); }, [word && word.name]);
@@ -445,6 +476,17 @@ window.__ModuleLoader__.load({
       }, [model.states.visible[0], word && word.name, model.autoPronounce]);
       React.useEffect(function () {
         return function () { if (model.refs.hideTimer.current) clearTimeout(model.refs.hideTimer.current); };
+      }, []);
+      React.useEffect(function () {
+        // 恢复上次拖到的位置;越出当前视口则放弃,回默认右下角
+        try {
+          var saved = posStore.getSnapshot();
+          if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y) &&
+              saved.x >= 0 && saved.y >= 0 &&
+              saved.x < window.innerWidth - 60 && saved.y < window.innerHeight - 48) {
+            model.states.pos[1]({ x: saved.x, y: saved.y });
+          }
+        } catch (_) {}
       }, []);
     }
 
@@ -468,13 +510,21 @@ window.__ModuleLoader__.load({
       return h(React.Fragment, null, h("style", { id: STYLE_ID }, css),
         h("section", {
           className: "vg-card", tabIndex: 0, ref: model.refs.card, "aria-label": "VibeGap 单词卡",
+          style: states.pos[0]
+            ? { left: states.pos[0].x + "px", top: states.pos[0].y + "px", right: "auto", bottom: "auto" }
+            : undefined,
           onFocus: function (event) { if (event.target === event.currentTarget) states.focused[1](true); },
           onBlur: function () { states.focused[1](false); },
           onMouseDown: function (event) {
             if (!event.target.closest("button,a,input,textarea,select")) model.refs.card.current.focus();
           },
         },
-        h("div", { className: "vg-head" }, h("div", { className: "vg-title" }, "VibeGap"),
+        h("div", {
+          className: "vg-head", title: "按住拖动",
+          onPointerDown: function (event) { startDrag(model, event); },
+        },
+          h("div", { className: "vg-title" }, "VibeGap"),
+          model.progressText ? h("span", { className: "vg-prog" }, model.progressText) : null,
           h(Button, { className: "vg-close", size: "sm", variant: "ghost", title: "隐藏",
             onClick: function () { hideCard(model, true); } }, "×")),
         states.banner[0] ? h("div", { className: "vg-banner", role: "status" }, states.banner[0]) : null,
@@ -505,9 +555,18 @@ window.__ModuleLoader__.load({
       var lifecycle = useLifecycleBridge(sessionState, states, refs);
       var backend = useDaemonBackend();
       var selection = activeSelection(useWordSelection(progress), backend);
+      var word = selection.word;
+      var progressText = "";
+      if (selection.isDaemon && word && Number.isFinite(Number(word.total))) {
+        progressText = word.position + "/" + word.total + " · 共享桌面进度";
+      } else if (selection.ordered.length) {
+        var cursorShown = Math.min(Math.max(Number(progress.cursor) || 0, 0), selection.ordered.length - 1);
+        progressText = cursorShown + "/" + selection.ordered.length + " · 本地进度";
+      }
       var model = {
         states: states, refs: refs, lifecycle: lifecycle, selection: selection, backend: backend,
         autoPronounce: !prefs || prefs.autoPronounce !== false,
+        progressText: progressText,
       };
       useCardEffects(model);
       useCardTyping(model);

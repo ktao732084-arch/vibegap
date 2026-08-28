@@ -145,7 +145,8 @@ vibegap/adapters/dsh/plugin/
 ├── cordis.patch.yml    # 勿动
 ├── lib/
 │   ├── index.js        # 勿动(事件桥)
-│   └── client.js       # 新增,本次主要工作量,≤500 行(spec §7.1)
+│   └── client.js       # 新增,本次主要工作量,≤800 行(专项上限:平台单入口
+│                       #   bundle 无法 require 相对文件拆分;内部用分节注释组织)
 └── README.md           # 新增:安装/开发说明,附 qwerty-learner attribution
 ```
 
