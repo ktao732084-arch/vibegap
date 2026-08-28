@@ -63,6 +63,7 @@ DATA_DIR = Path.home() / ".vibegap"
 DB_PATH = DATA_DIR / "vibegap.db"
 LOG_DIR = DATA_DIR / "logs"
 CONFIG_PATH = DATA_DIR / "config.json"
+HOTKEY_PREF_PATH = DATA_DIR / "hotkey.txt"  # 上次注册成功的组合,防止随开机环境漂移
 
 
 @dataclass(frozen=True)

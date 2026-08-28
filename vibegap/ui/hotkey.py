@@ -1,6 +1,8 @@
-"""全局热键(Ctrl+Alt+W):纯 ctypes RegisterHotKey + 独立消息循环线程。
+"""全局热键:纯 ctypes RegisterHotKey + 独立消息循环线程。
 
 注册失败(组合键被占)只记警告,不影响其他功能——手动唤醒仍可走 POST /toggle。
+首次注册成功的组合持久化到 HOTKEY_PREF_PATH,之后每次启动优先注册它,
+避免"上次是 G 这次变 W"的漂移(被占时才继续走候选链并更新记忆)。
 """
 from __future__ import annotations
 
@@ -9,6 +11,8 @@ import logging
 import threading
 from ctypes import wintypes
 from typing import Callable
+
+from vibegap.config import HOTKEY_PREF_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -34,17 +38,37 @@ def get_active_label() -> str | None:
     return _active_label
 
 
+def _ordered_candidates() -> list[tuple[int, str]]:
+    """上次成功的组合排最前,其余保持原序。"""
+    try:
+        preferred = HOTKEY_PREF_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return list(_CANDIDATES)
+    head = [item for item in _CANDIDATES if item[1] == preferred]
+    tail = [item for item in _CANDIDATES if item[1] != preferred]
+    return head + tail
+
+
+def _remember(label: str) -> None:
+    try:
+        HOTKEY_PREF_PATH.parent.mkdir(parents=True, exist_ok=True)
+        HOTKEY_PREF_PATH.write_text(label, encoding="utf-8")
+    except OSError as exc:
+        logger.warning("hotkey preference not saved: %s", exc)
+
+
 def start_hotkey_listener(callback: Callable[[], None]) -> None:
     """后台线程注册热键并泵消息;按下时调用 callback。"""
 
     def loop() -> None:
         global _active_label
         user32 = ctypes.windll.user32
-        for vk, label in _CANDIDATES:
+        for vk, label in _ordered_candidates():
             if user32.RegisterHotKey(
                 None, _HOTKEY_ID, _MOD_CONTROL | _MOD_ALT | _MOD_NOREPEAT, vk
             ):
                 _active_label = label
+                _remember(label)
                 break
             logger.warning("hotkey %s taken, trying next", label)
         if _active_label is None:
