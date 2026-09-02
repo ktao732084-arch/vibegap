@@ -30,9 +30,14 @@ HOOK_EVENTS = {
 }
 
 
-def build_command(event: str, agent: str, port: int = DEFAULT_PORT) -> str:
+def build_command(
+    event: str,
+    agent: str,
+    port: int = DEFAULT_PORT,
+    helper_command: str = "vibegap-hook",
+) -> str:
     """生成瞬时 helper 命令;helper 持有 stdin,失败时可启动并精确重放。"""
-    return f"vibegap-hook --agent {agent} --event {event} --port {port}"
+    return f"{helper_command} --agent {agent} --event {event} --port {port}"
 
 
 def load_settings(path: Path) -> dict:
@@ -85,14 +90,26 @@ def validate_hooks_shape(settings: dict) -> None:
                 sys.exit(f"ERROR: a matcher in hooks['{name}'] has non-list 'hooks'.")
 
 
-def apply_install(settings: dict, agent: str, port: int = DEFAULT_PORT) -> dict:
+def apply_install(
+    settings: dict,
+    agent: str,
+    port: int = DEFAULT_PORT,
+    helper_command: str = "vibegap-hook",
+) -> dict:
     """返回合入 vibegap 钩子后的新 settings(不修改入参)。"""
     result = json.loads(json.dumps(settings))  # deep copy
     hooks = result.setdefault("hooks", {})
     for hook_name, event in HOOK_EVENTS.items():
         matchers = _strip_ours(hooks.get(hook_name, []))
         matchers.append(
-            {"hooks": [{"type": "command", "command": build_command(event, agent, port)}]}
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": build_command(event, agent, port, helper_command),
+                    }
+                ]
+            }
         )
         hooks[hook_name] = matchers
     return result

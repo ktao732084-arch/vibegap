@@ -19,7 +19,21 @@
 - **按需运行**:Agent 启动时自动拉起;窗口隐藏且无 Agent/交互 10 分钟后自动退出,无需手动守着 daemon
 - **小细节**:跟随系统或手动切换深浅主题、运行中全局热键手动唤醒(Ctrl+Alt+W,被占自动换)、自动唤醒可关、整窗拖拽、不抢焦点
 
-## 快速开始(Windows)
+## 快速开始
+
+### Windows 安装包(推荐,不需要 Python)
+
+从 [Releases](https://github.com/ktao732084-arch/vibegap/releases/latest) 下载
+`VibeGap-<version>-Setup.exe` 后直接安装。安装器默认接入检测到的 Claude Code / Codex，
+只写当前用户目录，不请求管理员权限；不默认开机自启。
+
+安装后无需手动保持任何终端：Agent 第一次上报事件时会自动拉起 VibeGap，窗口隐藏且
+无 Agent/交互 10 分钟后自动退出。纯手动背词可从开始菜单打开 VibeGap。
+
+当前安装包尚未做商业代码签名，Windows 可能显示“未知发布者”；可用同一 Release 中的
+`SHA256SUMS.txt` 校验文件。安装包自带 CET-6 与 GRE 3000 词书，首次启动即可使用。
+
+### 源码安装(开发者)
 
 ```bash
 git clone https://github.com/ktao732084-arch/vibegap && cd vibegap
@@ -43,7 +57,8 @@ dsh web
 安装、交互和开发说明见
 [`vibegap/adapters/dsh/plugin/README.md`](vibegap/adapters/dsh/plugin/README.md)。
 
-接入 Claude Code / Codex(merge 写入 Hooks,自动备份,`--uninstall` 可完全还原)。
+安装包会自动完成 Claude Code / Codex 接入；源码安装用户可运行下列命令。接入过程会
+merge 写入 Hooks、写前自动备份，`--uninstall` 只移除 VibeGap 自己的条目。
 Hooks 使用短命的 `vibegap-hook`:正常时直接上报;Core 不在时自动启动、等待
 `/healthz` 身份校验通过,再原样重放首次事件:
 
@@ -80,14 +95,19 @@ DSH 单独使用 ──▶ DSH 进程内卡片(0 个 VibeGap 额外进程)
 python -m pytest -q          # 全量测试
 ```
 
+Windows 本地构建先安装项目与 `pyinstaller==6.20.0`；便携版运行
+`./packaging/build.ps1 -SkipInstaller`，完整 Setup 另需 Inno Setup 6。发布工作流会同时
+生成安装包、便携包和 `SHA256SUMS.txt`。
+
 工程约束(单文件 ≤500 行、纯函数内核、依赖方向单向等)见 spec.md §7。欢迎 issue / PR。
 
 ## 致谢与第三方
 
-- 词库数据来自 [qwerty-learner](https://github.com/RealKai42/qwerty-learner)(通过脚本按需下载,不随本仓库分发)
+- CET-6 / GRE 3000 词库数据来自 [qwerty-learner](https://github.com/RealKai42/qwerty-learner)，
+  发布构建固定上游提交并校验哈希；安装包内同时附带原始 JSON 与其 GPLv3 license。
 - AI 新闻数据来自数字生命卡兹克的 [AIHOT](https://aihot.virxact.com) 公开 API(免 key,礼貌轮询)
 - 发音音源:有道词典(失败自动降级系统 TTS)
 
 ## License
 
-MIT
+VibeGap 自有代码使用 MIT License；安装包内第三方词书数据保留其 GPLv3 license。

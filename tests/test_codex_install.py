@@ -57,6 +57,14 @@ def test_install_is_idempotent_and_uninstall_restores_original():
     assert codex_install.apply_uninstall(installed) == original
 
 
+def test_frozen_helper_command_is_installable_and_removable():
+    prefix = '"C:\\Program Files\\VibeGap\\VibeGapHook.exe"'
+    installed = codex_install.apply_install({}, helper_command=prefix)
+    command = installed["hooks"]["Stop"][0]["hooks"][0]["command"]
+    assert command.startswith(prefix + " ")
+    assert codex_install.apply_uninstall(installed) == {}
+
+
 @pytest.mark.parametrize(
     "bad_document",
     [

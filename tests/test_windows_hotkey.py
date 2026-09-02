@@ -46,3 +46,16 @@ def test_target_falls_back_to_module_ensure_entry(tmp_path, monkeypatch):
         str(pythonw.resolve()),
         "-m vibegap.adapters.hook --toggle",
     )
+
+
+def test_frozen_target_uses_current_executable(monkeypatch):
+    monkeypatch.setattr(windows_hotkey.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        windows_hotkey.sys,
+        "executable",
+        r"C:\Users\me\AppData\Local\Programs\VibeGap\VibeGap.exe",
+    )
+    assert windows_hotkey._target_command() == (
+        r"C:\Users\me\AppData\Local\Programs\VibeGap\VibeGap.exe",
+        "--ensure --toggle",
+    )

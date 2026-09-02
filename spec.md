@@ -1,6 +1,6 @@
 # VibeGap — AI Agent 等待间隙背单词工具 设计文档
 
-> 版本:v0.3  日期:2026-08-27  状态:M3 已实现,持续演进
+> 版本:v0.5  日期:2026-09-02  状态:M5 已实现,持续演进
 >
 > 一句话:当 Claude Code / Codex / pi / WorkBuddy 在跑任务时,自动弹出单词卡接着上次的进度背;
 > agent 跑完(或需要你确认权限)时,提醒并自动收起。进度全局持久,与任何会话无关。
@@ -76,7 +76,7 @@
 | 存储 | SQLite(stdlib `sqlite3`) | 单文件、零依赖、事务够用 |
 | Adapter 脚本 | PowerShell(.ps1)为主 | Windows 平台;**禁止 .bat 含中文**(见 §7) |
 | 测试 | pytest + pytest-cov | 核心逻辑(store/状态机)覆盖 ≥80% |
-| 打包 | 暂不打包,`python -m vibegap` 启动 | MVP 阶段不折腾 pyinstaller |
+| 打包 | PyInstaller onedir + Inno Setup 单文件安装器 | 用户免 Python;Hook 热路径不承担 onefile 每次解压成本 |
 
 ### 2.2 目录结构
 
@@ -87,6 +87,7 @@ vibegap/
 ├── pyproject.toml
 ├── vibegap/
 │   ├── __main__.py          # 同步 bind 后启动 Core + UI;隐藏空闲时自动退出
+│   ├── cli.py               # 冻结版主程序命令分发,冻结版子进程仍启动自身
 │   ├── config.py            # 全部常量与用户配置(唯一允许出现"魔法数字"的文件)
 │   ├── daemon/
 │   │   ├── app.py           # FastAPI 路由(仅路由,不含业务逻辑,<150 行)
@@ -114,6 +115,7 @@ vibegap/
 │   │           └── news_ticker.js  # 条带面板:AIHOT 新闻轮播
 │   └── adapters/            # 安装脚本 + 短命 helper
 │       ├── hook.py          # 上报失败时懒启动 Core 并重放 stdin
+│       ├── packaged.py      # 冻结版安装/卸载 Agent hooks,命令指向绝对 exe
 │       ├── windows_hotkey.py # 可选 Shell Link 冷启动热键(默认不开)
 │       ├── claude_code/
 │       │   ├── install.py   # 把 hooks 写入 ~/.claude/settings.json(merge,不覆盖)
@@ -125,6 +127,12 @@ vibegap/
 │       └── workbuddy/
 │           └── install.py   # 复用 claude_code 的钩子格式,写 ~/.workbuddy-ai/settings.json
 ├── dicts/                   # 内置词书(qwerty-learner JSON 原格式)
+├── packaging/
+│   ├── entry.py             # Core/UI 主程序入口
+│   ├── hook_entry.py        # 极小 Hook 入口,与主程序共享 onedir DLL
+│   ├── VibeGap.spec         # onedir/资源/pywebview 收集规则
+│   ├── installer.iss        # 当前用户、免管理员权限的单文件安装器
+│   └── build.ps1            # 本地与 CI 共用构建入口
 └── tests/
     ├── test_sessions.py
     ├── test_scheduler.py
@@ -360,6 +368,24 @@ CREATE TABLE kv (
 注意:WorkBuddy 桌面版权限走自己的 GUI,不注册 permission 相关 hook,只接 `running/done`。
 (此条待实机验证,列入 §10 开放问题。)
 
+### 5.6 Windows 免 Python 安装(M5)
+
+- 发布物是单个 `VibeGap-<version>-Setup.exe`;默认安装到
+  `%LOCALAPPDATA%\Programs\VibeGap`,不请求管理员权限。
+- 安装后的运行时采用 PyInstaller **onedir**。不能把 onefile 主程序直接放进每次
+  Agent 事件的 Hook 热路径:onefile 会先解压到临时目录,引入重复启动与磁盘成本。
+- onedir 内有 `VibeGap.exe` 与极小的 `VibeGapHook.exe`,两者共享同一份 DLL/解释器文件。
+  主程序分发 daemon / ensure / Agent 安装器;Hook 专用入口保留 stdin 且不导入 UI/Web 依赖。
+  冻结版 Hook 启动 Core 时必须执行同目录主程序,不能使用 `python -m vibegap`。
+- 安装器可选接入 Claude Code 与 Codex,仍遵守 merge、备份、精确卸载。写入的命令使用
+  安装目录下 exe 的绝对引用,不依赖 PATH。卸载不删除 `~/.vibegap` 用户进度。
+- 安装器为每个实际接管的 Hook 写私有收据。卸载必须同时匹配 agent、配置路径与收据；
+  收据缺失/损坏时宁可保留 Hook,不得误删源码版或其他安装方式的配置。
+- 发布构建从固定 qwerty-learner commit 获取 CET-6/GRE 3000，校验 SHA-256 后随包附带
+  原始 JSON 与上游 GPLv3 license；因此离线首次启动也有可用词书。
+- Agent 懒启动为默认。开机启动仅作为安装器中的未勾选选项,不得为了“免配置”重新引入
+  默认常驻进程;未选择常驻时继续服从空闲退出。
+
 ---
 
 ## 6. UI 设计(小窗框架:Shell + Panels)
@@ -537,7 +563,8 @@ TDD 流程:每个模块先写用例(RED)再实现(GREEN),见全局 testing 规�
 | **M2 小窗** | pywebview 悬浮窗 Shell + 单词卡面板(打字模式)+ 软关闭 + 断点续背全流程 + 新闻轮播条(AIHOT) | 真机连续使用一下午无闪弹、无焦点抢夺、进度不丢;断网时轮播条隐藏而背词不受影响 | 1.5~2.5 天 |
 | **M3 Codex** | 官方 Hooks + JSONL 恢复 watcher | 根任务/并行子 Agent 分开计数,重启后恢复运行态 | 0.5~1 天 |
 | **M4 扩展** | pi extension + dsh(hook bridge 路线)+ WorkBuddy + 统计页(今日/累计) | — | 1~1.5 天 |
-| M5(可选) | FSRS 间隔重复、认读模式、打包 exe | — | 另行评估 |
+| **M5 分发** | Windows 免 Python Setup、双 exe onedir、Hook 懒启动、精确卸载 | 全新目录安装后离线有词书;冷启动首事件不丢;未接入的 Hook 不被卸载 | 已完成 |
+| M6(可选) | FSRS 间隔重复、认读模式 | — | 另行评估 |
 
 **M2 结束后先真实使用 3~5 天再决定是否继续 M3+**(验证"我真的会在等待时背单词"这个前提)。
 
@@ -549,7 +576,7 @@ TDD 流程:每个模块先写用例(RED)再实现(GREEN),见全局 testing 规�
 | 优先级 | 内容 | 说明 |
 |-------|------|------|
 | **P0** | dsh 自包含插件首发 | 形态 B 改为"自包含优先":词库随包/首下,进度存 dsh storage,检测到本机 daemon 才升级共享进度;发布三件套(dsh-plugin topic / awesome PR / 配发内容)。发布后 4~6 周看安装量决定加码或收缩 |
-| **P1** | 打包/自启(#5)、FSRS(#3)、面板切换机制、刷题面板 | 面板切换是做第二个 main 面板的前置改造(半天);刷题与背单词同构(题库=卡组),顺手把 store 泛化成通用卡组模型 |
+| **P1** | FSRS(#3)、面板切换机制、刷题面板 | Windows 打包/懒启动(#5)已在 v0.5 完成;面板切换是做第二个 main 面板的前置改造(半天);刷题与背单词同构(题库=卡组),顺手把 store 泛化成通用卡组模型 |
 | **P2** | 风景轮播面板、小说面板 | 风景轮播兼作"面板开发示例"配开发文档;小说=文本分页+位置游标 |
 | **P3/社区** | 小游戏面板 | 不自研,写面板贡献指南留给社区;游戏类必须强制尊重软关闭(agent 完成即暂停+横幅) |
 

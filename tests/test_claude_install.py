@@ -77,6 +77,14 @@ def test_default_port_present():
     assert "--port 8765" in cmd
 
 
+def test_frozen_helper_command_can_replace_path_entrypoint():
+    prefix = '"C:\\Program Files\\VibeGap\\VibeGapHook.exe"'
+    result = cc_install.apply_install({}, "claude-code", helper_command=prefix)
+    cmd = result["hooks"]["Stop"][0]["hooks"][0]["command"]
+    assert cmd.startswith(prefix + " ")
+    assert "--agent claude-code --event done --port 8765" in cmd
+
+
 @pytest.mark.parametrize(
     "bad_settings",
     [

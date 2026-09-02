@@ -313,15 +313,19 @@ class Bridge:
             return {"error": "unsupported_agent"}
         if not target.parent.is_dir():
             return {"error": "not_detected"}
-        cmd = [
-            sys.executable, str(installer),
-            path_flag, str(target),
-            "--port", str(self._settings.daemon_port),
-        ]
-        if agent != "codex":
-            cmd.extend(["--agent", agent])
-        if uninstall:
-            cmd.append("--uninstall")
+        if getattr(sys, "frozen", False):
+            action = "--uninstall-agent" if uninstall else "--install-agent"
+            receipt = Path(sys.executable).resolve().parent / ".installer" / f"{agent}.json"
+            cmd = [sys.executable, action, agent, "--path", str(target),
+                   "--port", str(self._settings.daemon_port),
+                   "--receipt", str(receipt)]
+        else:
+            cmd = [sys.executable, str(installer), path_flag, str(target),
+                   "--port", str(self._settings.daemon_port)]
+            if agent != "codex":
+                cmd.extend(["--agent", agent])
+            if uninstall:
+                cmd.append("--uninstall")
         try:
             proc = subprocess.run(  # noqa: S603 - 固定安装器路径+白名单参数
                 cmd, capture_output=True, text=True, timeout=15,

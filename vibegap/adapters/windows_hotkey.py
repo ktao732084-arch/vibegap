@@ -27,6 +27,8 @@ def is_installed(path: Path | None = None) -> bool:
 
 
 def _target_command() -> tuple[str, str]:
+    if getattr(sys, "frozen", False):
+        return str(Path(sys.executable).resolve()), "--ensure --toggle"
     executable = shutil.which("vibegap-ensure.exe") or shutil.which("vibegap-ensure")
     if executable:
         return str(Path(executable).resolve()), "--toggle"

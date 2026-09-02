@@ -14,6 +14,7 @@ import socket
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from vibegap.config import DAEMON_PORT, SERVICE_ID, SERVICE_PROTOCOL_VERSION
 
@@ -96,8 +97,15 @@ def _post_event(agent: str, event: str, port: int, payload: bytes, timeout: floa
         return False
 
 
+def _daemon_command(port: int) -> list[str]:
+    if getattr(sys, "frozen", False):
+        executable = str(Path(sys.executable).with_name("VibeGap.exe"))
+        return [executable, "--daemon", "--port", str(port)]
+    return [sys.executable, "-m", "vibegap", "--port", str(port)]
+
+
 def _launch_daemon(port: int) -> subprocess.Popen:
-    command = [sys.executable, "-m", "vibegap", "--port", str(port)]
+    command = _daemon_command(port)
     kwargs: dict = {
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.DEVNULL,

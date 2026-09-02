@@ -1,5 +1,7 @@
 """Bridge 单测:文件库 + 真 Runtime(假通知器),覆盖 UI 数据出口。"""
 from datetime import timedelta
+import subprocess
+import sys
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,6 +13,7 @@ from vibegap.daemon.runtime import Runtime
 from vibegap.store.db import connect
 from vibegap.store.wordbooks import import_wordbook, set_current
 from vibegap.ui.bridge import open_bridge
+from vibegap.ui import bridge as bridge_module
 from tests.test_runtime import FakeClock, FakeNotifier
 
 WORDS = [{"name": f"word{i}", "trans": [f"释义{i}"], "usphone": "x"} for i in range(5)]
@@ -221,6 +224,34 @@ def test_install_agent_rejects_unknown(env):
     bridge, _, _ = env
     assert bridge.install_agent("skynet") == {"error": "unsupported_agent"}
     assert bridge.uninstall_agent("skynet") == {"error": "unsupported_agent"}
+
+
+def test_frozen_install_agent_uses_packaged_cli(env, tmp_path, monkeypatch):
+    bridge, _, _ = env
+    target = tmp_path / "claude" / "settings.json"
+    target.parent.mkdir()
+    monkeypatch.setitem(bridge_module._HOOK_TARGETS, "claude-code", target)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", r"C:\Program Files\VibeGap\VibeGap.exe")
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert bridge.install_agent("claude-code") == {"ok": True}
+    assert calls[0][0] == [
+        r"C:\Program Files\VibeGap\VibeGap.exe",
+        "--install-agent",
+        "claude-code",
+        "--path",
+        str(target),
+        "--port",
+        "8765",
+        "--receipt",
+        r"C:\Program Files\VibeGap\.installer\claude-code.json",
+    ]
 
 
 def test_get_state_running_agents(env):

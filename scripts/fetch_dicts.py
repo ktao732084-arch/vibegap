@@ -4,16 +4,29 @@
 """
 from __future__ import annotations
 
+import hashlib
 import sys
 import urllib.request
 from pathlib import Path
 
-_BASE = "https://raw.githubusercontent.com/RealKai42/qwerty-learner/master/public/dicts/"
-# 目标文件名 -> 源文件名候选(上游可能改名,按序尝试)
+_REVISION = "122acd90b4079dd040c28a14356447f6553cff83"
+_BASE = f"https://raw.githubusercontent.com/RealKai42/qwerty-learner/{_REVISION}/"
+# 发布构建固定到同一上游提交与哈希，避免 master 改名或内容漂移。
 _BOOKS = {
-    "CET6.json": ["CET6_T.json", "CET6.json"],
-    "GRE3000.json": ["GRE3000_T.json", "GRE_3000.json", "GRE3000.json"],
+    "CET6.json": (
+        "public/dicts/CET6_T.json",
+        "ed5e76b945b7c7bc567a75d44a6eaeda137c767960121057deab52593e245d6e",
+    ),
+    "GRE3000.json": (
+        "public/dicts/GRE3000_3_T.json",
+        "f7702f9751e0543eeab0ea05357b43ad0388750758a8d5435f6ff2f39b742dfe",
+    ),
 }
+_LICENSE = (
+    "qwerty-learner-LICENSE",
+    "LICENSE",
+    "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+)
 _TIMEOUT_SEC = 30
 
 
@@ -25,24 +38,26 @@ def fetch(url: str) -> bytes | None:
         return None
 
 
+def ensure_file(path: Path, source: str, expected_sha256: str) -> bool:
+    data = path.read_bytes() if path.exists() else fetch(_BASE + source)
+    if data is None or hashlib.sha256(data).hexdigest() != expected_sha256:
+        return False
+    if not path.exists():
+        path.write_bytes(data)
+        print(f"fetched {path.name} ({len(data) // 1024} KB)")
+    else:
+        print(f"skip {path.name} (verified)")
+    return True
+
+
 def main() -> None:
     dicts_dir = Path(__file__).resolve().parent.parent / "dicts"
     dicts_dir.mkdir(exist_ok=True)
     failed = []
-    for target, candidates in _BOOKS.items():
-        out = dicts_dir / target
-        if out.exists():
-            print(f"skip {target} (already exists)")
-            continue
-        data = None
-        for name in candidates:
-            data = fetch(_BASE + name)
-            if data:
-                break
-        if data:
-            out.write_bytes(data)
-            print(f"fetched {target} ({len(data) // 1024} KB)")
-        else:
+    assets = [(target, *details) for target, details in _BOOKS.items()]
+    assets.append(_LICENSE)
+    for target, source, expected_sha256 in assets:
+        if not ensure_file(dicts_dir / target, source, expected_sha256):
             failed.append(target)
     if failed:
         sys.exit(f"ERROR: failed to fetch {failed}; check network or download manually.")

@@ -12,7 +12,13 @@ from datetime import datetime
 from pathlib import Path
 
 DEFAULT_PORT = 8765
-_MARKERS = ("vibegap-hook", "src=vibegap", "src=wordgap")
+_MARKERS = (
+    "vibegap-hook",
+    "vibegaphook.exe",
+    "vibegap.exe",
+    "src=vibegap",
+    "src=wordgap",
+)
 HOOK_EVENTS = {
     "SessionStart": "attached",
     "SessionEnd": "detached",
@@ -23,9 +29,13 @@ HOOK_EVENTS = {
 }
 
 
-def build_command(event: str, port: int = DEFAULT_PORT) -> str:
+def build_command(
+    event: str,
+    port: int = DEFAULT_PORT,
+    helper_command: str = "vibegap-hook",
+) -> str:
     """生成瞬时 helper 命令;冷启动后仍能重放原始 Hook payload。"""
-    return f"vibegap-hook --agent codex --event {event} --port {port}"
+    return f"{helper_command} --agent codex --event {event} --port {port}"
 
 
 def load_hooks(path: Path) -> dict:
@@ -57,14 +67,25 @@ def validate_hooks_shape(document: dict) -> None:
                 sys.exit(f"ERROR: a matcher in hooks['{name}'] has invalid handlers.")
 
 
-def apply_install(document: dict, port: int = DEFAULT_PORT) -> dict:
+def apply_install(
+    document: dict,
+    port: int = DEFAULT_PORT,
+    helper_command: str = "vibegap-hook",
+) -> dict:
     """返回合入 VibeGap Hooks 后的新文档,不修改入参。"""
     result = json.loads(json.dumps(document))
     hooks = result.setdefault("hooks", {})
     for name, event in HOOK_EVENTS.items():
         matchers = _strip_ours(hooks.get(name, []))
         matchers.append(
-            {"hooks": [{"type": "command", "command": build_command(event, port)}]}
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": build_command(event, port, helper_command),
+                    }
+                ]
+            }
         )
         hooks[name] = matchers
     return result

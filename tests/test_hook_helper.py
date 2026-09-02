@@ -97,3 +97,16 @@ def test_startup_bind_window_is_not_mistaken_for_foreign_service(monkeypatch):
     monkeypatch.setattr(hook, "_launch_daemon", lambda port: object())
     monkeypatch.setattr(hook.time, "sleep", lambda seconds: None)
     assert hook._ensure_started(8765) is True
+
+
+def test_frozen_helper_relaunches_its_own_executable(monkeypatch):
+    monkeypatch.setattr(hook.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        hook.sys, "executable", r"C:\Program Files\VibeGap\VibeGapHook.exe"
+    )
+    assert hook._daemon_command(9999) == [
+        r"C:\Program Files\VibeGap\VibeGap.exe",
+        "--daemon",
+        "--port",
+        "9999",
+    ]
