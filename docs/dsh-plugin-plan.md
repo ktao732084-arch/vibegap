@@ -128,8 +128,10 @@ Phase 1 保持原样——它给装了桌面版的用户提供双端联动,没�
 - Python 侧:daemon 新增 `/panel/next-word`、`/panel/commit`、`/panel/progress`、
   `/panel/state`,CORS 仅放行 `http(s)://localhost:*` 与 `127.0.0.1:*` Origin;
   现有 `_reject_browser` 防护的端点一律不动
-- 客户端启动探测 `/panel/state`(1s 超时):通 → 词与游标走 daemon(与桌面窗共享),
-  断 → 回落自包含;运行中断线平滑降级不崩卡片
+- 客户端每 5s 探测默认端口 `8765` 的 `/panel/state`(1s 超时):通 → 词与游标走
+  daemon(与桌面窗共享),并停止页内卡自动弹出以避免和桌面窗重复;手动快捷键仍可呼出。
+  首次探测不通 → 自包含模式;运行中断线 → 保留当前词、禁用提交并明确提示正在重连,
+  防止两个进度源分叉。
 
 ### 明确不做
 
@@ -147,6 +149,8 @@ vibegap/adapters/dsh/plugin/
 │   ├── index.js        # 勿动(事件桥)
 │   └── client.js       # 新增,本次主要工作量,≤800 行(专项上限:平台单入口
 │                       #   bundle 无法 require 相对文件拆分;内部用分节注释组织)
+├── test/
+│   └── client.test.js  # Node 内置 test runner:纯逻辑、effect 依赖与 manifest
 └── README.md           # 新增:安装/开发说明,附 qwerty-learner attribution
 ```
 

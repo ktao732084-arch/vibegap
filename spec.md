@@ -340,13 +340,15 @@ CREATE TABLE kv (
 
 ### 5.4 dsh / DeepSeek Harness(M4)
 
-机制:两条路线,优先路线 A。
+机制:已落地原生插件 `dsh-vibegap`,不依赖 Claude Code / Codex hook bridge。
 
-- **路线 A(零成本)**:dsh 官方提供 Claude Code / Codex 的 **hook bridge**,可直接运行已有的
-  hooks.json——即我们为 Claude Code 写的钩子在 dsh 下原样生效,仅 `agent` 字段上报为 `dsh`
-  (钩子脚本加 `-Agent dsh` 参数区分)。
-- **路线 B(原生插件)**:dsh 是微内核架构(基于 Cordis),万物皆插件,生命周期事件有
-  pre-step / turn-end 等;若 bridge 覆盖不全,写一个原生 dsh 插件监听 turn 开始/结束 → HTTP POST。
+- **单独使用**:单词卡直接运行在 dsh web 进程内,词库与游标存 dsh snapshot store,
+  VibeGap 额外进程数为 0。
+- **共享使用**:客户端每 5 秒探测默认端口 `8765` 的 VibeGap Core。Core 存在时改用
+  桌面端词书和游标,且页内卡不自动弹出以避免双卡;`Ctrl+Alt+V` 仍可手动呼出。
+  共享期间断线保留当前词并等待重连,不回落本地提交,防止两套进度分叉。
+- **生命周期桥**:插件监听 dsh 的 `agent/status`,Core 已存在时 fire-and-forget 上报
+  running/done;失败静默降级且绝不主动拉起 Core,从而保持单独使用的零额外进程。
 - 生态调研结论(2026-08):dsh 插件生态(awesome-deepseek-harness / dsh-plugin topic)中
   **没有**背单词/flashcard 类插件,通知类只有 dsh-auto-continue、dsh-web-attention-badge 等;
   VibeGap 若发原生插件属生态空白。
@@ -519,6 +521,7 @@ merge 不覆盖(绝不动用户已有配置项)、写前备份(`*.bak.<时间戳
 | `codex_watcher.py` | pytest,临时 JSONL 树 | 启动恢复;增量完整行;历史创建日的恢复任务;子 Agent 独立 ID |
 | `wordbooks.py` | pytest | qwerty-learner JSON 导入;畸形 JSON 报错不入库 |
 | adapter 安装 | 手测清单 | merge 不破坏已有 hooks;卸载后 settings 还原;daemon 未启动时 agent 不受影响 |
+| DSH 客户端 | Node `node:test` + VM 宿主桩 | manifest 无 BOM;断线不分叉进度;自动弹出让位;键盘 listener 不反复重绑 |
 | UI | 手测清单 | 不抢焦点;打字判定;横幅;窗口位置记忆 |
 
 TDD 流程:每个模块先写用例(RED)再实现(GREEN),见全局 testing 规则。

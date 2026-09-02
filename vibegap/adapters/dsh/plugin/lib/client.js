@@ -59,6 +59,7 @@ window.__ModuleLoader__.load({
       ".vg-hint{margin-top:12px;text-align:center;color:var(--dsw-alias-label-tertiary,#888);font-size:11px}",
       ".vg-empty{padding:18px 4px 8px;text-align:center;color:var(--dsw-alias-label-secondary,#666);font-size:13px;line-height:1.6}",
       ".vg-error{margin-top:10px;color:var(--dsw-alias-state-danger-primary,#c93c37);font-size:12px}",
+      ".vg-reconnect{margin:8px 0 0;text-align:center;color:var(--dsw-alias-state-warning-primary,#9a6700);font-size:12px}",
       ".vg-shake{animation:vg-shake .28s ease-in-out}",
       "@keyframes vg-blink{50%{border-color:transparent}}",
       "@keyframes vg-shake{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}",
@@ -194,6 +195,13 @@ window.__ModuleLoader__.load({
         draft.cursor = Math.min(Math.max(Number(remoteProgress.cursor), 0), draft.words.length - 1);
       });
     }
+    function daemonFailureState(current) {
+      if (current.mode === "daemon" || current.mode === "disconnected") {
+        return { mode: "disconnected", word: current.word };
+      }
+      if (current.mode === "probing") return { mode: "local", word: null };
+      return current;
+    }
     function useDaemonBackend() {
       var backend = React.useState({ mode: "probing", word: null });
       var current = useCell({ mode: "probing", word: null });
@@ -213,14 +221,15 @@ window.__ModuleLoader__.load({
               if (active) setBackend({ mode: "daemon", word: word });
             }
           } catch (_) {
-            if (active && current.current.mode !== "local") setBackend({ mode: "local", word: null });
+            var failed = daemonFailureState(current.current);
+            if (active && failed !== current.current) setBackend(failed);
           }
           if (active) timer = setTimeout(probe, DAEMON_PROBE_MS);
         }
         probe();
         return function () { active = false; if (timer) clearTimeout(timer); };
       }, []);
-      return backend;
+      return [backend[0], setBackend];
     }
 
     function advanceProgress(total) {
@@ -258,10 +267,16 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function useLifecycle(sessionState, visible, setVisible, showBanner, onRestart) {
+    function canAutoPopup(backendMode) {
+      return backendMode !== "daemon" && backendMode !== "disconnected";
+    }
+
+    function useLifecycle(sessionState, visible, setVisible, showBanner, onRestart, allowAutoPopup) {
       var ref = useCell({ running: false, rows: {}, suppressed: false, arm: null, pending: null });
       var runningRef = useCell(false);
       var visibleRef = useCell(visible);
+      var autoPopupRef = useCell(allowAutoPopup);
+      autoPopupRef.current = allowAutoPopup;
       React.useEffect(function () { visibleRef.current = visible; }, [visible]);
       React.useEffect(function () {
         var anyRunning = sessionState.ids.some(function (id) {
@@ -273,7 +288,7 @@ window.__ModuleLoader__.load({
           life.suppressed = false; life.pending = null;
           onRestart();
           if (!visibleRef.current) life.arm = setTimeout(function () {
-            if (!runningRef.current || life.suppressed) return;
+            if (!runningRef.current || life.suppressed || !autoPopupRef.current) return;
             setVisible(true);
             if (life.pending) { showBanner(life.pending); life.pending = null; }
           }, POPUP_DELAY_MS);
@@ -293,34 +308,47 @@ window.__ModuleLoader__.load({
       return { state: ref, running: runningRef };
     }
 
+    function createTypingHandler(configRef) {
+      return function onKey(event) {
+        var config = configRef.current;
+        if (document.activeElement !== config.card.current) return;
+        if (event.key === "Escape") { event.preventDefault(); config.hide(); return; }
+        if (event.key === "Tab") {
+          event.preventDefault(); config.setPeeked(true); config.setTyped(0);
+          config.setRevealed(function (value) { return !value; }); return;
+        }
+        if (event.key.length !== 1 || !/[a-zA-Z'\- ]/.test(event.key)) return;
+        event.preventDefault();
+        if (config.revealed) config.setRevealed(false);
+        if (event.key.toLowerCase() === config.word[config.typed].toLowerCase()) {
+          var next = config.typed + 1; config.setTyped(next);
+          if (next === config.word.length) config.complete();
+          return;
+        }
+        config.setTypos(function (value) { return value + 1; });
+        config.setTyped(0); config.shake();
+      };
+    }
+
     function useTyping(config) {
+      var configRef = useCell(config);
+      configRef.current = config;
       React.useEffect(function () {
         if (!config.visible || !config.focused || !config.word || config.busy) return;
-        function onKey(event) {
-          if (document.activeElement !== config.card.current) return;
-          if (event.key === "Escape") { event.preventDefault(); config.hide(); return; }
-          if (event.key === "Tab") {
-            event.preventDefault(); config.setPeeked(true); config.setTyped(0);
-            config.setRevealed(function (value) { return !value; }); return;
-          }
-          if (event.key.length !== 1 || !/[a-zA-Z'\- ]/.test(event.key)) return;
-          event.preventDefault();
-          if (config.revealed) config.setRevealed(false);
-          if (event.key.toLowerCase() === config.word[config.typed].toLowerCase()) {
-            var next = config.typed + 1; config.setTyped(next);
-            if (next === config.word.length) config.complete();
-            return;
-          }
-          config.setTypos(function (value) { return value + 1; });
-          config.setTyped(0); config.shake();
-        }
+        var onKey = createTypingHandler(configRef);
         document.addEventListener("keydown", onKey);
         return function () { document.removeEventListener("keydown", onKey); };
-      }, [config]);
+      }, [config.visible, config.focused, config.word, config.busy]);
     }
 
     function CardBody(props) {
-      if (!props.word) return h(EmptyCard, { status: props.download, setStatus: props.setDownload });
+      if (!props.word) {
+        if (props.connectionLost) {
+          return h("div", { className: "vg-empty", role: "status" },
+            "桌面端连接已断开，正在自动重连");
+        }
+        return h(EmptyCard, { status: props.download, setStatus: props.setDownload });
+      }
       var translation = props.word.trans.join("；");
       return h(React.Fragment, null,
         h(LetterGrid, {
@@ -333,6 +361,8 @@ window.__ModuleLoader__.load({
           props.typos ? "错 " + props.typos : null,
           props.outcome ? h("span", { role: "status" }, props.outcome === "fail" ? "已记为需复习" : "拼写正确") : null,
         ),
+        props.connectionLost ? h("div", { className: "vg-reconnect", role: "status" },
+          "桌面端连接已断开，当前词会在重连后继续") : null,
         h("div", { className: "vg-actions" },
           h(Button, { size: "sm", variant: "outline", onClick: props.pronounce }, "发音"),
           h(Button, { size: "sm", variant: "ghost", onClick: props.toggleAuto },
@@ -368,12 +398,18 @@ window.__ModuleLoader__.load({
     function activeSelection(local, backend) {
       var remote = backend[0];
       if (remote.mode === "daemon" && remote.word) {
-        return { ordered: [remote.word], word: remote.word, isDaemon: true };
+        return { ordered: [remote.word], word: remote.word, isDaemon: true,
+          connectionLost: false, remoteUnavailable: false };
       }
-      return { ordered: local.ordered, word: local.word, isDaemon: false };
+      if (remote.mode === "disconnected") {
+        return { ordered: remote.word ? [remote.word] : [], word: remote.word, isDaemon: true,
+          connectionLost: true, remoteUnavailable: true };
+      }
+      return { ordered: local.ordered, word: local.word, isDaemon: false,
+        connectionLost: false, remoteUnavailable: false };
     }
 
-    function useLifecycleBridge(sessionState, states, refs) {
+    function useLifecycleBridge(sessionState, states, refs, allowAutoPopup) {
       var showBanner = function (message) {
         refs.banner.current = message; states.banner[1](message);
       };
@@ -382,7 +418,9 @@ window.__ModuleLoader__.load({
         clearTimeout(refs.hideTimer.current); refs.hideTimer.current = null;
         showBanner(null); resetInput(states);
       };
-      var tracker = useLifecycle(sessionState, states.visible[0], states.visible[1], showBanner, onRestart);
+      var tracker = useLifecycle(
+        sessionState, states.visible[0], states.visible[1], showBanner, onRestart, allowAutoPopup,
+      );
       return { tracker: tracker, showBanner: showBanner };
     }
     function resetInput(states) {
@@ -435,7 +473,7 @@ window.__ModuleLoader__.load({
         syncLocalProgress(result);
         var word = await panelRequest("/next-word");
         model.backend[1]({ mode: "daemon", word: word });
-      } catch (_) { model.backend[1]({ mode: "local", word: null }); }
+      } catch (_) { model.backend[1](daemonFailureState(model.backend[0])); }
     }
 
     function shakeCard(states) {
@@ -508,7 +546,8 @@ window.__ModuleLoader__.load({
       useTyping({
         visible: states.visible[0], focused: states.focused[0],
         word: word && word.name,
-        busy: states.busy[0], typed: states.typed[0], revealed: states.revealed[0],
+        busy: states.busy[0] || model.selection.remoteUnavailable,
+        typed: states.typed[0], revealed: states.revealed[0],
         card: model.refs.card, setTyped: states.typed[1], setTypos: states.typos[1],
         setRevealed: states.revealed[1], setPeeked: states.peeked[1],
         hide: function () { hideCard(model, true); },
@@ -551,6 +590,7 @@ window.__ModuleLoader__.load({
         word: word, typed: states.typed[0], typos: states.typos[0], revealed: states.revealed[0],
         focused: states.focused[0], shaking: states.shaking[0], download: states.download[0],
         outcome: states.outcome[0], setDownload: states.download[1], autoPronounce: model.autoPronounce,
+        connectionLost: model.selection.connectionLost,
         pronounce: function () { if (word) safePronounce(word.name); },
         toggleAuto: function () { prefsStore.set({ autoPronounce: !model.autoPronounce }); },
       };
@@ -564,13 +604,16 @@ window.__ModuleLoader__.load({
       var prefs = useSnapshot(prefsStore);
       var states = useCardStates();
       var refs = { card: useCell(null), hideTimer: useCell(null), banner: useCell(null) };
-      var lifecycle = useLifecycleBridge(sessionState, states, refs);
       var backend = useDaemonBackend();
+      var lifecycle = useLifecycleBridge(
+        sessionState, states, refs, canAutoPopup(backend[0].mode),
+      );
       var selection = activeSelection(useWordSelection(progress), backend);
       var word = selection.word;
       var progressText = "";
       if (selection.isDaemon && word && Number.isFinite(Number(word.total))) {
-        progressText = word.position + "/" + word.total + " · 共享桌面进度";
+        progressText = word.position + "/" + word.total +
+          (selection.connectionLost ? " · 桌面端重连中" : " · 共享桌面进度");
       } else if (selection.ordered.length) {
         var cursorShown = Math.min(Math.max(Number(progress.cursor) || 0, 0), selection.ordered.length - 1);
         progressText = cursorShown + "/" + selection.ordered.length + " · 本地进度";
@@ -587,6 +630,15 @@ window.__ModuleLoader__.load({
 
     exports.apply = apply;
     exports.inject = inject;
+    exports.__test = {
+      activeSelection: activeSelection,
+      canAutoPopup: canAutoPopup,
+      createTypingHandler: createTypingHandler,
+      daemonFailureState: daemonFailureState,
+      normalizeWords: normalizeWords,
+      transitionNotice: transitionNotice,
+      useTyping: useTyping,
+    };
     return module.exports;
   },
 });

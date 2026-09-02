@@ -38,7 +38,9 @@ dsh web
 ```
 
 插件可独立保存词库和进度;本机 Core 稍后由其他 Agent 拉起时,插件会自动探测并
-切换到桌面端的当前词书与游标,断线后再回退到浏览器进度。安装、交互和开发说明见
+切换到桌面端的当前词书与游标。共享时页内卡不自动弹出,避免和桌面小窗重复;
+仍可用 `Ctrl+Alt+V` 手动呼出。运行中断线会保留当前词等待重连,不让两套进度分叉。
+安装、交互和开发说明见
 [`vibegap/adapters/dsh/plugin/README.md`](vibegap/adapters/dsh/plugin/README.md)。
 
 接入 Claude Code / Codex(merge 写入 Hooks,自动备份,`--uninstall` 可完全还原)。
