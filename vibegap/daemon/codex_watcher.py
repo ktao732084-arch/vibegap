@@ -43,10 +43,12 @@ class CodexWatcher:
         sessions_dir: Path,
         emit: EmitFn,
         clock: Callable[[], datetime] = datetime.now,
+        touch: Callable[[str], None] | None = None,
     ) -> None:
         self._dir = Path(sessions_dir)
         self._emit = emit
         self._clock = clock
+        self._touch = touch
         self._offsets: dict[Path, int] = {}
         self._meta: dict[Path, tuple[str, str]] = {}  # path -> (session_id, cwd)
         self._is_first_poll = True
@@ -123,6 +125,8 @@ class CodexWatcher:
         self._offsets[path] = offset + consumed
         for raw in chunk[:consumed].splitlines():
             self._handle_line(path, raw)
+        if self._touch is not None:
+            self._touch(self._meta[path][0])
 
     def _register_file(self, path: Path, size: int, replay: bool) -> None:
         """首次见到文件:读取元数据;首轮恢复最终运行态,新文件从头回放。"""

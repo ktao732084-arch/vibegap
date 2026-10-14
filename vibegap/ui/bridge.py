@@ -274,7 +274,7 @@ class Bridge:
         """设置面板 Agent 区块:每个 agent 的检测/接入状态。"""
         return [
             _hook_agent_status("claude-code", CLAUDE_SETTINGS_PATH),
-            _codex_agent_status(),
+            _codex_agent_status(self._runtime),
             _hook_agent_status("workbuddy", WORKBUDDY_SETTINGS_PATH),
             {
                 "agent": "pi",
@@ -337,6 +337,8 @@ class Bridge:
         if proc.returncode != 0:
             logger.error("installer exit %d: %s", proc.returncode, proc.stderr[-300:])
             return {"error": "installer_failed"}
+        if agent == "codex" and not uninstall:
+            return {"ok": True, "message": "配置已写入。请在 Codex 的 Hooks 页面审核并信任新配置，再发送一条任务验证；CLI 可用 /hooks。"}
         return {"ok": True}
 
     def get_settings(self) -> dict:
@@ -454,17 +456,11 @@ def _hook_agent_status(name: str, settings_path: Path) -> dict:
     return {"agent": name, "status": "available", "detail": "可接入"}
 
 
-def _codex_agent_status() -> dict:
-    """Codex 优先使用官方 Hooks,日志 watcher 始终作为启动恢复兜底。"""
-    if not CODEX_SESSIONS_DIR.parent.is_dir():
-        return {"agent": "codex", "status": "missing", "detail": "未检测到"}
-    try:
-        content = CODEX_HOOKS_PATH.read_text(encoding="utf-8", errors="ignore").lower()
-    except OSError:
-        content = ""
-    if "vibegap" in content or "wordgap" in content:
-        return {"agent": "codex", "status": "connected", "detail": "Hooks + 日志恢复"}
-    return {"agent": "codex", "status": "available", "detail": "可接入官方 Hooks"}
+def _codex_agent_status(runtime: Runtime | None = None) -> dict:
+    from vibegap.adapters.codex.status import inspect_hooks
+    from vibegap.daemon.events import Agent
+
+    return inspect_hooks(CODEX_HOOKS_PATH, runtime.recent_hook(Agent.CODEX) if runtime else None)
 
 
 def open_bridge(

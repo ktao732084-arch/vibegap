@@ -216,7 +216,7 @@ def test_get_agents_reports_all_five(env):
     agents = bridge.get_agents()
     assert [a["agent"] for a in agents] == ["claude-code", "codex", "workbuddy", "pi", "dsh"]
     for a in agents:
-        assert a["status"] in ("connected", "available", "manual", "missing")
+        assert a["status"] in ("connected", "configured", "error", "available", "manual", "missing")
         assert a["detail"]
 
 

@@ -3,8 +3,14 @@ from __future__ import annotations
 
 import io
 import sys
+import pytest
 
 from vibegap.adapters import hook
+
+
+@pytest.fixture(autouse=True)
+def isolated_diagnostics(tmp_path, monkeypatch):
+    monkeypatch.setattr(hook, "LOG_DIR", tmp_path)
 
 
 class _Stdin:
@@ -16,8 +22,8 @@ def test_hook_replays_exact_payload_after_lazy_start(monkeypatch):
     payload = b'{"session_id":"abc","cwd":"E:/repo"}'
     calls = []
 
-    def post(agent, event, port, body, timeout):
-        calls.append((agent, event, port, body, timeout))
+    def post(agent, event, port, body, timeout, observed_at):
+        calls.append((agent, event, port, body, timeout, observed_at))
         return len(calls) > 1
 
     monkeypatch.setattr(sys, "stdin", _Stdin(payload))
@@ -32,6 +38,7 @@ def test_hook_replays_exact_payload_after_lazy_start(monkeypatch):
     assert len(calls) == 2
     assert calls[0][3] == payload
     assert calls[1][3] == payload
+    assert calls[0][5] == calls[1][5]
 
 
 def test_hook_does_not_start_when_fast_path_succeeds(monkeypatch):

@@ -330,6 +330,12 @@ CREATE TABLE kv (
 - `adapters/codex/install.py` 只 merge 自己的 command hooks,写前备份,可精确卸载;
   安装后需在 Codex `/hooks` 中检查并信任。实现遵循
   [Codex Hooks 官方文档](https://learn.chatgpt.com/docs/hooks)。
+- 源码接入命令固定到安装时的 Python 绝对路径,不依赖宿主 PATH;除 SessionEnd 外
+  使用异步 Hook,上限 12 秒。helper 在开始处理时记录时间,随原样 payload 重放;
+  Runtime 拒绝早于已处理结束事件的迟到开始事件,避免冷启动乱序重新打开已结束任务。
+- 设置页区分配置损坏、命令缺失、已配置未验证、近期收到真实 HTTP Hook;
+  日志 watcher 不计为 Hook 接入成功。安装后的审核信任提示必须展示给用户,
+  不代写 Codex 的信任记录。失败阶段记入按日期的 hook 日志(不记录 prompt/payload)。
 - 不复用 `~/.codex/config.toml` 的 `notify`:该字段可能已被 Codex Desktop 自身使用,
   覆盖会破坏桌面端功能。
 - watcher(`daemon/codex_watcher.py`)由 ticker 每秒驱动:高频扫描最近 2 天日期目录和所有
@@ -338,6 +344,9 @@ CREATE TABLE kv (
   生命周期事件,只恢复仍在运行的任务;随后按 offset 增量读取完整行。子 Agent 日志以
   文件名 UUID 区分,不采用元数据中的父 session_id。
 - Hooks 与 watcher 可能同时看到同一条结束事件;会话 reducer 对已空闲会话的重复 done/attention 去重。
+- 已跟踪日志新增完整行时,刷新仍处于 running 状态的会话活跃时间;刷新先于 TTL 清理,
+  不重置弹窗计时或解除 Esc,不复活已结束会话。持续写日志的长任务不会因开始时间超过
+  30 分钟而被误清理;超过 30 分钟完全无生命周期/日志活动的会话仍按孤儿会话清理。
 - JSONL 是内部格式而非稳定接口,因此仅作恢复/降级路径,解析逻辑隔离在单文件内,
   失败时静默降级且不影响其他 Agent。
 
@@ -536,6 +545,10 @@ merge 不覆盖(绝不动用户已有配置项)、写前备份(`*.bak.<时间戳
 ---
 
 ## 8. 测试策略
+
+左上角词书标题兼作拖动入口:单击打开词书选择,按住移动达到 6 个屏幕像素后按拖动处理,
+松手不触发词书菜单;拖回原位仍是拖动。使用屏幕坐标判断,避免窗口随鼠标移动时客户区
+坐标不变造成误判。失焦取消当前单击,下一次普通单击不受影响。
 
 覆盖率目标:**store + daemon 纯函数核心 ≥80%**(UI 与 adapter 脚本不计入,手测清单代替)。
 

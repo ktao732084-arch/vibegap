@@ -180,6 +180,8 @@
           '" data-d="1">+</span></span>';
         openOverlay(
           "<h4>设置</h4>" +
+          (shell._agentMessage ? '<p class="ov-sub">' + esc(shell._agentMessage) + '</p>' : '') +
+          (!s.auto_popup ? '<p class="ov-sub">自动唤醒已关闭：任务运行时不会自动弹窗，手动唤醒仍可用。</p>' : '') +
           '<div class="set-row"><span class="set-label">主题</span><span class="set-chips">' +
           chip("theme", "auto", "自动", prefs.theme === "auto") +
           chip("theme", "light", "日间", prefs.theme === "light") +
@@ -207,13 +209,15 @@
           "<h4>Agent 接入</h4>" +
           (agents || []).map((a) => {
             let right;
-            if (a.status === "connected") {
-              right = '<span class="ag-ok">' + esc(a.detail) + "</span>" +
+            if (a.status === "connected" || a.status === "configured") {
+              right = '<span class="' + (a.status === "connected" ? "ag-ok" : "ov-sub") + '">' + esc(a.detail) + "</span>" +
+                (a.agent === "codex" ? ' <span class="ag-btn" data-agent="codex" data-act="install">更新接入</span>' : '') +
                 (a.agent in { "claude-code": 1, codex: 1, workbuddy: 1 }
                   ? ' <span class="ag-btn" data-agent="' + a.agent + '" data-act="uninstall">移除</span>'
                   : "");
             } else if (a.status === "available") {
-              right = '<span class="ag-btn" data-agent="' + a.agent + '" data-act="install">接入</span>';
+              right = '<span class="ov-sub">' + esc(a.detail) + '</span> ' +
+                '<span class="ag-btn" data-agent="' + a.agent + '" data-act="install">接入</span>';
             } else {
               right = '<span class="ov-sub">' + esc(a.detail) + "</span>";
             }
@@ -240,7 +244,15 @@
             const isInstall = b.getAttribute("data-act") === "install";
             b.textContent = "…";
             const call = isInstall ? api.install_agent(agent) : api.uninstall_agent(agent);
-            call.then(() => shell.showSettings());
+            call.then((result) => {
+              shell._agentMessage = result.error
+                ? "接入操作未完成，请检查配置和日志。原有配置不会被强制覆盖。"
+                : (result.message || "操作完成。");
+              shell.showSettings();
+            }).catch(() => {
+              shell._agentMessage = "无法连接后台，请稍后重试。";
+              shell.showSettings();
+            });
           });
         });
       });
@@ -343,6 +355,44 @@
   }
 
   window.shell = shell;
+
+  // A native window move can keep clientX/Y almost unchanged. Track screen
+  // coordinates and latch the gesture, even if the pointer returns to its origin.
+  let titleGesture = null;
+  const dragThreshold = 6;
+  function trackTitleGesture(e) {
+    if (!titleGesture || !titleGesture.down) return;
+    if (Math.hypot(e.screenX - titleGesture.x, e.screenY - titleGesture.y) >= dragThreshold) {
+      titleGesture.dragged = true;
+    }
+  }
+  window.addEventListener("mousedown", (e) => {
+    titleGesture = e.button === 0 && e.target.closest && e.target.closest("#status-text")
+      ? { x: e.screenX, y: e.screenY, down: true, dragged: false }
+      : null;
+  }, true);
+  window.addEventListener("mousemove", trackTitleGesture, true);
+  window.addEventListener("mouseup", (e) => {
+    trackTitleGesture(e);
+    if (titleGesture) titleGesture.down = false;
+  }, true);
+  window.addEventListener("blur", () => {
+    if (titleGesture && titleGesture.down) {
+      titleGesture.dragged = true;
+      titleGesture.down = false;
+    }
+  });
+  window.addEventListener("click", (e) => {
+    // Keyboard/programmatic activation has detail=0 and remains a normal click.
+    if (e.detail === 0 || !titleGesture) return;
+    trackTitleGesture(e);
+    const dragged = titleGesture.dragged;
+    titleGesture = null;
+    if (dragged) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  }, true);
 
   // Esc 分层:覆盖层 → 复习/浏览退出 → 当前词记 skip 并隐藏。捕获阶段监听。
   document.addEventListener("keydown", (e) => {

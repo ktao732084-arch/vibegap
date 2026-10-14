@@ -16,6 +16,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Install build dependencies
         run: python -m pip install . pyinstaller==6.20.0 pytest pytest-cov
       - name: Run Python tests
@@ -23,6 +26,8 @@ jobs:
       - name: Run DSH plugin tests
         working-directory: vibegap/adapters/dsh/plugin
         run: npm test
+      - name: Run desktop gesture tests
+        run: node --test tests/shell_gestures.test.js
       - name: Build portable bundle and installer
         shell: pwsh
         run: ./packaging/build.ps1
@@ -44,4 +49,5 @@ jobs:
             "dist/VibeGap-$version-portable.zip" `
             "dist/installer/VibeGap-$version-Setup.exe" `
             "dist/SHA256SUMS.txt" `
-            --generate-notes
+            --title "VibeGap v$version" `
+            --notes-file "docs/releases/$env:GITHUB_REF_NAME.md"

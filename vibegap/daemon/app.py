@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime
 from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, HTTPException, Request
@@ -48,7 +49,8 @@ def _mount_event_routes(app: FastAPI, runtime: Runtime) -> None:
         return {"ok": True}
 
     @app.post("/hook/{agent}/{event}")
-    async def claude_hook(request: Request, agent: Agent, event: EventKind) -> dict:
+    async def claude_hook(request: Request, agent: Agent, event: EventKind,
+                          observed_at: datetime | None = None) -> dict:
         """接收 Claude-Code 兼容钩子的原始 stdin JSON(经 curl 透传),服务端提取 session_id。
 
         路径参数刻意不用查询串:URL 无 `&`,钩子命令不需要任何引号转义。
@@ -56,8 +58,9 @@ def _mount_event_routes(app: FastAPI, runtime: Runtime) -> None:
         """
         _reject_browser(request)
         session_id, cwd = parse_hook_payload(await request.body())
+        runtime.record_hook(agent)
         runtime.handle_event(
-            AgentEvent(agent=agent, session_id=session_id, kind=event, ts=None, cwd=cwd)
+            AgentEvent(agent=agent, session_id=session_id, kind=event, ts=observed_at, cwd=cwd)
         )
         return {"ok": True}
 
@@ -66,11 +69,13 @@ def _mount_event_routes(app: FastAPI, runtime: Runtime) -> None:
         request: Request,
         agent: Agent,
         event: LifecycleKind,
+        observed_at: datetime | None = None,
     ) -> dict:
         """接收 SessionStart/SessionEnd,供 Core 判断宿主是否仍在使用。"""
         _reject_browser(request)
         session_id, _ = parse_hook_payload(await request.body())
-        runtime.handle_lifecycle(agent, session_id, event)
+        runtime.record_hook(agent)
+        runtime.handle_lifecycle(agent, session_id, event, observed_at)
         return {"ok": True}
 
 

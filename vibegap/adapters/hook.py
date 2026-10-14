@@ -14,9 +14,11 @@ import socket
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlencode
 
-from vibegap.config import DAEMON_PORT, SERVICE_ID, SERVICE_PROTOCOL_VERSION
+from vibegap.config import DAEMON_PORT, LOG_DIR, SERVICE_ID, SERVICE_PROTOCOL_VERSION
 
 _HOST = "127.0.0.1"
 _FAST_TIMEOUT_SEC = 0.35
@@ -29,6 +31,21 @@ _HOOK_EVENTS = {"running", "done", "attention"}
 _SERVICE_MATCH = "match"
 _SERVICE_ABSENT = "absent"
 _SERVICE_FOREIGN = "foreign"
+
+
+def _diagnostic(stage: str, port: int) -> None:
+    """Append bounded metadata only; never log prompts, paths from stdin or secrets."""
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        # Date-based files avoid cross-process rotation races between short-lived hooks.
+        stamp = datetime.now()
+        path = LOG_DIR / f"hook-{stamp:%Y-%m-%d}.log"
+        if path.exists() and path.stat().st_size >= 256 * 1024:
+            return
+        with path.open("a", encoding="utf-8") as log:
+            log.write(f"{stamp.isoformat(timespec='seconds')} port={port} stage={stage}\n")
+    except OSError:
+        pass
 
 
 def _read_payload() -> bytes:
@@ -82,12 +99,15 @@ def _health_matches(port: int) -> bool:
     return _service_status(port) == _SERVICE_MATCH
 
 
-def _post_event(agent: str, event: str, port: int, payload: bytes, timeout: float) -> bool:
+def _post_event(agent: str, event: str, port: int, payload: bytes, timeout: float,
+                observed_at: str | None = None) -> bool:
     prefix = "lifecycle" if event in _LIFECYCLE_EVENTS else "hook"
     try:
         status, _ = _request(
             "POST",
-            f"/{prefix}/{agent}/{event}",
+            f"/{prefix}/{agent}/{event}" + (
+                "?" + urlencode({"observed_at": observed_at}) if observed_at else ""
+            ),
             port,
             body=payload,
             timeout=timeout,
@@ -129,10 +149,12 @@ def _ensure_started(port: int, timeout: float = _START_TIMEOUT_SEC) -> bool:
     if status == _SERVICE_MATCH:
         return True
     if status == _SERVICE_FOREIGN:
+        _diagnostic("port_identity_mismatch", port)
         return False
     try:
         _launch_daemon(port)
     except OSError:
+        _diagnostic("launch_failed", port)
         return False
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -142,28 +164,32 @@ def _ensure_started(port: int, timeout: float = _START_TIMEOUT_SEC) -> bool:
         # 我们刚刚启动的进程会先 bind、后挂载 HTTP 路由。这个短窗口里端口
         # 已打开但 /healthz 尚不可读,不能误判成外来服务并丢掉首次事件。
         time.sleep(_POLL_INTERVAL_SEC)
+    _diagnostic("startup_timeout", port)
     return False
 
 
 def hook_main() -> None:
     """安装到 Agent hooks 的入口;任何故障都必须静默且 exit 0。"""
-    parser = argparse.ArgumentParser(add_help=False)
+    observed_at = datetime.now(timezone.utc).isoformat()
+    parser = argparse.ArgumentParser(description="Forward an Agent event to VibeGap")
     parser.add_argument("--agent", required=True)
     parser.add_argument("--event", choices=sorted(_HOOK_EVENTS | _LIFECYCLE_EVENTS), required=True)
     parser.add_argument("--port", type=int, default=DAEMON_PORT)
     args = parser.parse_args()
     try:
         payload = _read_payload()
-        if _post_event(args.agent, args.event, args.port, payload, _FAST_TIMEOUT_SEC):
+        if _post_event(args.agent, args.event, args.port, payload, _FAST_TIMEOUT_SEC, observed_at):
             return
         # SessionEnd 是清理信号。Core 已经空闲退出时不能为了“通知它退出”
         # 反向把它重新拉起,否则闲置零进程永远无法成立。
         if args.event == "detached":
             return
         if _ensure_started(args.port):
-            _post_event(args.agent, args.event, args.port, payload, _REQUEST_TIMEOUT_SEC)
+            if not _post_event(args.agent, args.event, args.port, payload, _REQUEST_TIMEOUT_SEC, observed_at):
+                _diagnostic("replay_failed", args.port)
     except Exception:
-        # Hook 永远不能阻塞或破坏宿主 Agent。详细启动错误由 daemon.log 负责。
+        # 不把诊断写入 stdout,避免被宿主当成模型上下文。
+        _diagnostic("helper_failed", args.port)
         return
 
 
@@ -187,4 +213,8 @@ def ensure_main() -> None:
 if __name__ == "__main__":
     # ``vibegap-hook`` has its own console entry point. Module execution is the
     # dependency-free fallback used by the optional Windows shortcut.
-    ensure_main()
+    if "--hook" in sys.argv:
+        sys.argv.remove("--hook")
+        hook_main()
+    else:
+        ensure_main()

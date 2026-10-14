@@ -25,3 +25,5 @@ jobs:
       - name: Test DSH client
         working-directory: vibegap/adapters/dsh/plugin
         run: npm test
+      - name: Test desktop gestures
+        run: node --test tests/shell_gestures.test.js

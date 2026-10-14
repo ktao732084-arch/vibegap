@@ -82,6 +82,10 @@ class Runtime:
         self._sessions = sessions.EMPTY_SESSIONS
         self._sched = scheduler.INITIAL_SCHEDULER
         self._connected: dict[sessions.SessionKey, datetime] = {}
+        self._activity: dict[sessions.SessionKey, datetime] = {}
+        self._closed: dict[sessions.SessionKey, datetime] = {}
+        self._lifecycle_seen: dict[sessions.SessionKey, datetime] = {}
+        self._hook_received: dict[Agent, datetime] = {}
         self._last_activity_at = self._clock()
 
     def handle_event(self, event: AgentEvent) -> None:
@@ -89,8 +93,14 @@ class Runtime:
         with self._lock:
             event = replace(event, ts=_normalize_timestamp(event.ts, self._clock()))
             key = sessions.SessionKey(event.agent, event.session_id)
-            self._last_activity_at = event.ts
             existing = self._sessions.sessions.get(key)
+            if (key in self._closed and event.ts <= self._closed[key]) or (
+                existing is not None and event.ts < existing.last_event_at
+            ):
+                return  # A delayed cold-start replay must not undo a newer Stop.
+            self._closed.pop(key, None)
+            self._last_activity_at = self._clock()
+            self._activity[key] = self._clock()
             is_new_run = event.kind is EventKind.RUNNING and (
                 existing is None or not existing.is_running
             )
@@ -110,16 +120,28 @@ class Runtime:
         agent: Agent,
         session_id: str,
         kind: LifecycleKind,
+        ts: datetime | None = None,
     ) -> None:
         """记录 Agent 宿主加入/离开;不把宿主退出当作一次任务完成。"""
         with self._lock:
             now = self._clock()
             key = sessions.SessionKey(agent, session_id)
+            observed_at = _normalize_timestamp(ts, now)
+            if key in self._lifecycle_seen and observed_at < self._lifecycle_seen[key]:
+                return
+            if kind is LifecycleKind.ATTACHED and key in self._closed and observed_at <= self._closed[key]:
+                return
+            info = self._sessions.sessions.get(key)
+            if kind is LifecycleKind.DETACHED and info is not None and observed_at < info.last_event_at:
+                return
+            self._lifecycle_seen[key] = observed_at
             self._last_activity_at = now
             if kind is LifecycleKind.ATTACHED:
                 self._connected[key] = now
             else:
+                self._closed[key] = observed_at
                 self._connected.pop(key, None)
+                self._activity.pop(key, None)
                 self._sessions = sessions.remove_session(self._sessions, key)
             effects = self._sync_running_state()
             should_drain = self._queue_effects(effects)
@@ -131,7 +153,12 @@ class Runtime:
         with self._lock:
             now = self._clock()
             ttl = timedelta(minutes=self._settings.session_ttl_min)
-            self._sessions = sessions.cleanup_expired(self._sessions, now, ttl)
+            self._sessions = sessions.cleanup_expired(self._sessions, now, ttl, self._activity)
+            self._activity = {key: ts for key, ts in self._activity.items()
+                              if key in self._sessions.sessions}
+            self._closed = {key: ts for key, ts in self._closed.items() if now - ts <= ttl}
+            self._lifecycle_seen = {key: ts for key, ts in self._lifecycle_seen.items()
+                                    if now - ts <= ttl}
             self._connected = {
                 key: last_seen
                 for key, last_seen in self._connected.items()
@@ -148,6 +175,30 @@ class Runtime:
             should_drain = self._queue_effects(effects)
         if should_drain:
             self._drain_effects()
+
+    def touch_running(self, agent: Agent, session_id: str) -> None:
+        """Refresh liveness from actual log growth, without reopening a completed turn."""
+        with self._lock:
+            key = sessions.SessionKey(agent, session_id)
+            info = self._sessions.sessions.get(key)
+            if info is not None and info.is_running:
+                now = self._clock()
+                self._activity[key] = now
+                self._last_activity_at = now
+                if key in self._connected:
+                    self._connected[key] = now
+
+    def record_hook(self, agent: Agent) -> None:
+        """Only HTTP hooks call this; the log watcher is not proof of hook execution."""
+        with self._lock:
+            self._hook_received[agent] = self._clock()
+
+    def recent_hook(self, agent: Agent) -> str | None:
+        with self._lock:
+            ts = self._hook_received.get(agent)
+            if ts is not None and self._clock() - ts <= timedelta(minutes=self._settings.session_ttl_min):
+                return ts.isoformat(timespec="seconds")
+            return None
 
     def word_committed(self) -> None:
         """UI 每提交一个词调用(M2 起使用)。"""

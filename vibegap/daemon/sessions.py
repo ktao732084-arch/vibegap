@@ -57,12 +57,13 @@ def reduce_event(
     return new_state, [AgentFinished(agent=event.agent, kind=event.kind)]
 
 
-def cleanup_expired(state: SessionsState, now: datetime, ttl: timedelta) -> SessionsState:
+def cleanup_expired(state: SessionsState, now: datetime, ttl: timedelta,
+                    activity: Mapping[SessionKey, datetime] | None = None) -> SessionsState:
     """清理超过 ttl 未活动的会话(agent 崩溃/被杀的兜底),静默不产生效果。"""
     alive = {
         key: info
         for key, info in state.sessions.items()
-        if now - info.last_event_at <= ttl
+        if now - max(info.last_event_at, (activity or {}).get(key, info.last_event_at)) <= ttl
     }
     if len(alive) == len(state.sessions):
         return state

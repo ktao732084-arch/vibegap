@@ -141,7 +141,8 @@ def _make_codex_watcher(runtime: Runtime) -> CodexWatcher | None:
         )
 
     logger.info("codex watcher enabled: %s", CODEX_SESSIONS_DIR)
-    return CodexWatcher(CODEX_SESSIONS_DIR, emit)
+    return CodexWatcher(CODEX_SESSIONS_DIR, emit,
+                        touch=lambda sid: runtime.touch_running(Agent.CODEX, sid))
 
 
 def _start_ticker(
@@ -154,10 +155,10 @@ def _start_ticker(
         while True:
             time.sleep(TICK_INTERVAL_SEC)
             try:
-                runtime.tick()
-                newsfeed.maybe_refresh()
                 if watcher is not None:
                     watcher.poll()
+                runtime.tick()  # Refresh log activity before expiring sessions.
+                newsfeed.maybe_refresh()
                 if runtime.should_exit_idle():
                     logger.info("idle timeout reached; exiting")
                     request_exit()

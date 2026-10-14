@@ -67,7 +67,9 @@ python vibegap/adapters/claude_code/install.py
 python vibegap/adapters/codex/install.py
 ```
 
-Codex 安装后请在 `/hooks` 中检查并信任配置。官方 Hooks 负责实时事件,`~/.codex/sessions` 日志监听只负责守护进程重启恢复与降级(包括恢复后继续写入旧日期目录的历史对话),不会修改已有 `notify`。其余 agent 见 `vibegap/adapters/` 下各目录说明,或在悬浮窗 ⚙ 设置 → Agent 接入 里一键操作。
+Codex 安装或更新 Hook 后,请在 Hooks 页面检查并信任配置(CLI 可用 `/hooks`)。设置页的“已配置”不代表已经成功执行;收到真实 Hook 后才显示“近期收到 Hook”。源码接入固定使用安装时的 Python 路径,无需在 Codex 中激活 Python 环境。官方 Hooks 负责实时事件,`~/.codex/sessions` 日志监听负责守护进程重启恢复、降级及长任务活跃检测,不会修改已有 `notify`。其余 agent 见 `vibegap/adapters/` 下各目录说明,或在悬浮窗 ⚙ 设置 → Agent 接入 里一键操作。
+
+若任务运行时不弹窗,先检查设置中的“自动唤醒”是否开启(默认延迟 18 秒)。接入失败可检查 `~/.vibegap/logs/hook-YYYY-MM-DD.log` 的失败阶段和 `daemon.log`;Hook 日志不包含对话内容。持续产生新日志的 Codex 长任务会刷新活跃时间;完全无新活动超过 30 分钟仍会被视为过期会话。
 
 `SessionStart/SessionEnd` 负责 Core 使用生命周期,`UserPromptSubmit/Stop` 负责一次任务的弹窗生命周期。默认在窗口隐藏、没有连接中的 Agent 且 10 分钟无交互后退出;可在设置中调整或开启“后台常驻”。
 
