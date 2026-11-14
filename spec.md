@@ -417,7 +417,7 @@ CREATE TABLE kv (
 框架能力以"够这两个用"为准,不做注册中心/热加载等投机功能(YAGNI)。
 
 **数据出口统一走 daemon**:面板不直接访问外网。新闻数据由 daemon 的 `newsfeed.py`
-定时拉取 AIHOT 公开 API(`GET aihot.virxact.com/api/public/*`,免 key)并缓存,
+定时拉取 AIHOT 公开 API(`GET https://aihot.news/api/v1/items?mode=selected&window=24h&limit=30`,免 key)并缓存,
 UI 经 bridge 读缓存。拉取失败时轮播条整体隐藏,绝不影响背单词主功能(优雅降级)。
 
 ### 6.1 窗口行为
@@ -605,7 +605,7 @@ TDD 流程:每个模块先写用例(RED)再实现(GREEN),见全局 testing 规�
     session_id 字段是否一致 —— M4 开工时实机验证;不行则走原生插件路线(§5.4 路线 B)。
 4. 词书选哪本作为默认内置?(建议先放 CET-6 + GRE 两本,用户可另导入。)
 5. 全局热键库选型(`keyboard` 库需管理员权限的问题)—— M2 时验证,不行就只留托盘图标唤起。
-6. AIHOT 公开 API 的具体端点与返回字段(aihot.virxact.com/api/public/*,免 key)——
-   M2 实现 newsfeed.py 时实际请求一次确认;注意礼貌拉取(≥30 分钟间隔,带 UA,尊重其条款)。
+6. AIHOT 公开 API 的资讯接口为 `/api/v1/items`（免 key）。轮播读取
+   `items[].links.original`（缺少时用 `links.aihot`）和 `items[].source.name`；拉取间隔≥30 分钟，带 UA。
 7. 未来面板 roadmap(不排期,仅记录方向):消息通知流面板、视频小窗面板(pywebview 可承载
    HTML5 video,技术上可行;焦点/快捷键与打字面板的冲突届时设计)。

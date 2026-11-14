@@ -19,12 +19,11 @@ class FakeClock:
 
 def test_parse_items_real_shape():
     payload = {
-        "count": 1,
         "items": [
             {
                 "title": "标题",
-                "url": "https://x",
-                "source": "NVIDIA Blog（RSS）",
+                "links": {"original": "https://x", "aihot": "https://aihot.news/items/1"},
+                "source": {"name": "NVIDIA Blog（RSS）"},
                 "publishedAt": "2026-08-24T15:00:19.000Z",
                 "summary": "摘要",
                 "score": 63,
@@ -35,6 +34,7 @@ def test_parse_items_real_shape():
     items = parse_items(payload)
     assert len(items) == 1
     assert items[0].title == "标题"
+    assert items[0].url == "https://x"
     assert items[0].source == "NVIDIA Blog（RSS）"
 
 
