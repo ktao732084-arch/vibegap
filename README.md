@@ -15,7 +15,7 @@
 - **多 agent**:Claude Code / Codex(官方 Hooks)、pi / dsh / WorkBuddy(适配模板见 `vibegap/adapters/`);Codex 另有日志恢复兜底
 - **会话面板**:按 agent 分组显示各会话的运行中/已完成状态
 - **打字模式**:qwerty-learner 式拼写,音标+发音(有道音源,可关),Tab 看答案(看过即记入错词),←→ 浏览前后词
-- **错词复习 / 每日目标 / AI 新闻轮播条**(卡兹克 [AIHOT](https://aihot.virxact.com) 公开 API)
+- **错词复习 / 每日目标 / AI 新闻轮播条**(卡兹克 [AIHOT](https://aihot.news/) 公开 API)
 - **按需运行**:Agent 启动时自动拉起;窗口隐藏且无 Agent/交互 10 分钟后自动退出,无需手动守着 daemon
 - **小细节**:跟随系统或手动切换深浅主题、运行中全局热键手动唤醒(Ctrl+Alt+W,被占自动换)、自动唤醒可关、整窗拖拽、不抢焦点
 
@@ -107,7 +107,7 @@ Windows 本地构建先安装项目与 `pyinstaller==6.20.0`；便携版运行
 
 - CET-6 / GRE 3000 词库数据来自 [qwerty-learner](https://github.com/RealKai42/qwerty-learner)，
   发布构建固定上游提交并校验哈希；安装包内同时附带原始 JSON 与其 GPLv3 license。
-- AI 新闻数据来自数字生命卡兹克的 [AIHOT](https://aihot.virxact.com) 公开 API(免 key,礼貌轮询)
+- AI 新闻数据来自数字生命卡兹克的 [AIHOT](https://aihot.news/) 公开 API(免 key,礼貌轮询)
 - 发音音源:有道词典(失败自动降级系统 TTS)
 
 ## License

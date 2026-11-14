@@ -33,7 +33,7 @@ class NewsItem:
 
 
 def default_fetcher() -> list[NewsItem]:
-    """请求 AIHOT 公开 API。返回体带 UTF-8 BOM,用 utf-8-sig 解码。"""
+    """请求 AIHOT 公开 API,兼容带 UTF-8 BOM 的响应。"""
     import httpx
 
     resp = httpx.get(
@@ -55,11 +55,13 @@ def parse_items(payload: object) -> list[NewsItem]:
     for raw in payload["items"]:
         if not isinstance(raw, dict) or not raw.get("title"):
             continue
+        links = raw.get("links") or {}
+        source = raw.get("source") or {}
         items.append(
             NewsItem(
                 title=str(raw["title"]),
-                url=str(raw.get("url", "")),
-                source=str(raw.get("source", "")),
+                url=str(links.get("original") or links.get("aihot") or ""),
+                source=str(source.get("name") or ""),
                 summary=str(raw.get("summary", "")),
                 published_at=str(raw.get("publishedAt", "")),
             )
